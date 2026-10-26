@@ -9,6 +9,7 @@ This repo updates automatically whenever I change a published skill.
 | [expo-device-testing](skills/expo-device-testing) | > |
 | [mdot-extract-standard-drawings](skills/mdot-extract-standard-drawings) | Extracts the roadway standard drawings called out in an MDOT plan set's Detailed Index into a standalone \"Standards\" companion PDF, pulled from the current MDOT standards master in OneDrive and named from the plan set' |
 | [mdot-plan-set-qaqc](skills/mdot-plan-set-qaqc) | QA/QC review of an MDOT roadway plan set PDF. Use when someone wants to QC, QA/QC, check or review plans or a plan set. Indexes and chunks the whole set (text layer + OCR of pasted tables, hybrid keyword/vector search),  |
+| [profile-notes-extractor](skills/profile-notes-extractor) | Pull the stacked notes in the profile view of MDOT/roadway plan-profile sheets (drainage structure callouts like 337 B / STA. 337+36.00 / SS-2 REQ'D LT / TOP = / INV. =, drive, box culvert and bridge notes) into a Word d |
 
 ## Use
 
