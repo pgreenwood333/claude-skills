@@ -1,0 +1,168 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>html,body{margin:0;background:transparent;overflow:hidden}canvas{display:block}</style>
+<script type="importmap">
+{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+"three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}
+</script>
+</head>
+<body>
+<script type="module">
+// Renders assets/devices/iphone-17-pro-max.glb with a screenshot on its OLED screen.
+// Driven by render_device.mjs via window.RENDER(opts); sets window.DONE when drawn.
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+
+window.RENDER = async (o) => {
+  const W = o.width, H = o.height;
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+  renderer.setPixelRatio(1);
+  renderer.setSize(W, H);
+  renderer.setClearColor(0x000000, 0);
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = o.exposure ?? 1.0;
+  document.body.appendChild(renderer.domElement);
+
+  const scene = new THREE.Scene();
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+  const key = new THREE.DirectionalLight(0xffffff, o.keyLight ?? 1.6);
+  key.position.set(-3, 4, 5); scene.add(key);
+  scene.add(new THREE.AmbientLight(0xffffff, 0.25));
+
+  const gltf = await new GLTFLoader().loadAsync(o.model);
+  const phone = gltf.scene;
+
+  // screenshot onto the OLED material (unlit: a display emits, it isn't shaded)
+  const tex = await new THREE.TextureLoader().loadAsync(o.screen);
+  tex.flipY = false;                       // glTF UV convention
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  let hit = 0;
+  phone.traverse((c) => {
+    if (!c.isMesh) return;
+    const mats = Array.isArray(c.material) ? c.material : [c.material];
+    mats.forEach((m, i) => {
+      if (m && m.name === 'OLED') {
+        const nm = new THREE.MeshBasicMaterial({ map: tex, toneMapped: false });
+        if (Array.isArray(c.material)) c.material[i] = nm; else c.material = nm;
+        hit++;
+      }
+      if (m && o.debug && o.debug[m.name]) {
+        const dm = new THREE.MeshBasicMaterial({ color: o.debug[m.name] });
+        if (Array.isArray(c.material)) c.material[i] = dm; else c.material = dm;
+      }
+      if (m && o.hide && o.hide.includes(m.name)) { m.visible = false; }
+      if (m && o.frameColor && /Anodized aluminum|Display Frame|Plastic antena|Plastic port|Metal tint/.test(m.name)) m.color.set(o.frameColor);
+    });
+  });
+  window.SCREEN_HITS = hit;
+
+  // Screen overlay: the model's OLED isn't UV-mapped for images, so lay our own
+  // screen plane on the front glass (measured from the Glass mesh) and draw the
+  // screenshot with rounded corners + Dynamic Island onto it.
+  let glass = null;
+  phone.traverse((c) => { if (c.isMesh && !glass && (Array.isArray(c.material) ? c.material : [c.material]).some((m) => m && m.name === 'Glass')) glass = c; });
+  if (glass) {
+    phone.updateMatrixWorld(true);
+    glass.geometry.computeBoundingBox();
+    const gb = glass.geometry.boundingBox.clone().applyMatrix4(glass.matrix);   // in phone space
+    const gw = gb.max.x - gb.min.x, gh = gb.max.y - gb.min.y;
+    const inset = o.inset ?? 0.035;                         // black border around the display
+    const sw = gw * (1 - 2 * inset), sh = gh - gw * 2 * inset;
+    const img = await new Promise((r) => { const i = new Image(); i.onload = () => r(i); i.src = o.screen; });
+    const cv = document.createElement('canvas');
+    const cw = 1320, ch = Math.round(cw * sh / sw);
+    cv.width = cw; cv.height = ch;
+    const g = cv.getContext('2d');
+    const rr = cw * (o.cornerRadius ?? 0.13);
+    g.beginPath(); g.roundRect(0, 0, cw, ch, rr); g.clip();
+    g.fillStyle = '#000'; g.fillRect(0, 0, cw, ch);
+    const sc = Math.max(cw / img.width, ch / img.height);
+    g.drawImage(img, (cw - img.width * sc) / 2, 0, img.width * sc, img.height * sc);
+    if (o.island !== false) {                               // Dynamic Island
+      const iw = cw * 0.29, ih = cw * 0.085;
+      g.fillStyle = '#000'; g.beginPath(); g.roundRect((cw - iw) / 2, cw * 0.028, iw, ih, ih / 2); g.fill();
+    }
+    // Blank each popped region on the screen itself (filled with the app background
+    // sampled just outside it) so the lifted copy doesn't leave a duplicate behind.
+    const drawX = (cw - img.width * sc) / 2;
+    for (const pp of (o.pops || [])) {
+      if (pp.hideOriginal === false) continue;
+      const [x0, y0, x1, y1] = pp.box;
+      const px = g.getImageData(Math.max(1, Math.round(drawX + (x0 - 12) * sc)), Math.round((y0 + y1) / 2 * sc), 1, 1).data;
+      g.fillStyle = `rgb(${px[0]},${px[1]},${px[2]})`;
+      g.fillRect(drawX + (x0 - 2) * sc, (y0 - 2) * sc, (x1 - x0 + 4) * sc, (y1 - y0 + 4) * sc);
+    }
+    const st = new THREE.CanvasTexture(cv);
+    st.colorSpace = THREE.SRGBColorSpace; st.anisotropy = renderer.capabilities.getMaxAnisotropy();
+    const plane = new THREE.Mesh(new THREE.PlaneGeometry(sw, sh),
+      new THREE.MeshBasicMaterial({ map: st, transparent: true, toneMapped: false }));
+    const front = o.frontSign ?? -1;                        // model's display faces -Z
+    plane.position.set((gb.min.x + gb.max.x) / 2, (gb.min.y + gb.max.y) / 2,
+      (front < 0 ? gb.min.z : gb.max.z) + front * 0.0005 * Math.max(gw, gh));
+    if (front < 0) plane.rotation.y = Math.PI;
+    phone.add(plane);
+
+    // 3D pop-outs: UI regions of the capture lifted off the glass toward the camera,
+    // enlarged, with a soft shadow on the screen — they share the phone's perspective.
+    const capX = (cw - img.width * sc) / 2;
+    for (const pp of (o.pops || [])) {
+      const [x0, y0, x1, y1] = pp.box;                      // capture pixels
+      const k = pp.scale ?? 1.14, kx = pp.scaleX ?? k, ky = pp.scaleY ?? k, lift = (pp.lift ?? 0.045) * sh;
+      const pw = (x1 - x0) * sc, ph = (y1 - y0) * sc;       // canvas px
+      const pc = document.createElement('canvas');
+      pc.width = Math.round(pw); pc.height = Math.round(ph);
+      const pg = pc.getContext('2d');
+      const r = (pp.radius ?? 40) * sc;
+      pg.beginPath(); pg.roundRect(0, 0, pc.width, pc.height, r); pg.clip();
+      pg.drawImage(img, x0, y0, x1 - x0, y1 - y0, 0, 0, pc.width, pc.height);
+      const ptex = new THREE.CanvasTexture(pc); ptex.colorSpace = THREE.SRGBColorSpace;
+      ptex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+      const wW = pw / cw * sw, wH = ph / ch * sh;           // plane units
+      const cx = ((capX + x0 * sc + pw / 2) / cw - 0.5) * sw;
+      const cy = (0.5 - (y0 * sc + ph / 2) / ch) * sh;
+      // shadow on the glass
+      const shc = document.createElement('canvas'); const pad = 60;
+      shc.width = pc.width + pad * 2; shc.height = pc.height + pad * 2;
+      const sg = shc.getContext('2d'); sg.filter = 'blur(26px)'; sg.fillStyle = 'rgba(0,0,0,0.75)';
+      sg.beginPath(); sg.roundRect(pad, pad, pc.width, pc.height, r); sg.fill();
+      const stex = new THREE.CanvasTexture(shc);
+      const shadow = new THREE.Mesh(new THREE.PlaneGeometry(wW * shc.width / pc.width * kx, wH * shc.height / pc.height * ky),
+        new THREE.MeshBasicMaterial({ map: stex, transparent: true, depthWrite: false, toneMapped: false }));
+      shadow.position.set(cx, cy - lift * 0.35, lift * 0.05);
+      plane.add(shadow);
+      const pop = new THREE.Mesh(new THREE.PlaneGeometry(wW * kx, wH * ky),
+        new THREE.MeshBasicMaterial({ map: ptex, transparent: true, toneMapped: false }));
+      pop.position.set(cx, cy, lift);
+      plane.add(pop);
+    }
+    glass.visible = o.showGlass ?? false;
+  }
+
+  // center + normalize
+  const box = new THREE.Box3().setFromObject(phone);
+  const size = box.getSize(new THREE.Vector3()), ctr = box.getCenter(new THREE.Vector3());
+  phone.position.sub(ctr);
+  const pivot = new THREE.Group(); pivot.add(phone); scene.add(pivot);
+  const s = 2 / Math.max(size.x, size.y, size.z); pivot.scale.setScalar(s);
+  // face the camera if the model's screen normal isn't +Z
+  if (o.baseRotY) phone.rotation.y = THREE.MathUtils.degToRad(o.baseRotY);
+  if (o.baseRotX) phone.rotation.x = THREE.MathUtils.degToRad(o.baseRotX);
+
+  const d = THREE.MathUtils.degToRad;
+  pivot.rotation.set(d(o.rotX || 0), d(o.rotY || 0), d(o.rotZ || 0), 'YXZ');
+
+  const cam = new THREE.PerspectiveCamera(o.fov ?? 22, W / H, 0.01, 100);
+  cam.position.set(0, 0, o.distance ?? 6.2);
+  cam.lookAt(0, 0, 0);
+  renderer.render(scene, cam);
+  window.DONE = true;
+};
+</script>
+</body>
+</html>

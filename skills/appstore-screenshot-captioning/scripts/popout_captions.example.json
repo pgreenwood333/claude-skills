@@ -1,0 +1,128 @@
+{
+  "en-English": {
+    "01": [
+      "[Free Up Storage]|in Minutes",
+      "Find duplicates, similar photos, big videos and screenshots"
+    ],
+    "02": [
+      "Delete [Duplicate Photos]",
+      "We pick the best shot, you clear the rest"
+    ],
+    "03": [
+      "Merge [Duplicate Contacts]",
+      "Combine repeat cards into one clean entry"
+    ],
+    "04": [
+      "Easy on the Eyes in [Dark Mode]",
+      "Dark, Light or System — in 7 languages"
+    ]
+  },
+  "es-Spanish": {
+    "01": [
+      "[Libera espacio]|en minutos",
+      "Limpia el almacenamiento de tu iPhone: duplicados, fotos similares y videos pesados"
+    ],
+    "02": [
+      "Borra [fotos duplicadas]",
+      "Elegimos la mejor, tú borras el resto"
+    ],
+    "03": [
+      "Limpia [contactos duplicados]",
+      "Junta los repetidos en un solo contacto"
+    ],
+    "04": [
+      "Descansa la vista con el [modo oscuro]",
+      "Oscuro, claro o del sistema, en 7 idiomas"
+    ]
+  },
+  "pt-Portuguese": {
+    "01": [
+      "[Libere espaço]|em minutos",
+      "Limpe o armazenamento do celular: fotos duplicadas, semelhantes e vídeos grandes"
+    ],
+    "02": [
+      "Apague [fotos duplicadas]",
+      "Escolhemos a melhor, você apaga o resto"
+    ],
+    "03": [
+      "Junte [contatos duplicados]",
+      "Sua agenda limpa, sem contatos repetidos"
+    ],
+    "04": [
+      "Mais conforto no [modo escuro]",
+      "Escuro, claro ou do sistema, em 7 idiomas"
+    ]
+  },
+  "de-German": {
+    "01": [
+      "[Handy aufräumen]|in Minuten",
+      "Mehr Speicherplatz: Duplikate, ähnliche Fotos, große Videos und Screenshots"
+    ],
+    "02": [
+      "[Doppelte Fotos] löschen",
+      "Wir finden das Beste, du löschst den Rest"
+    ],
+    "03": [
+      "[Doppelte Kontakte] zusammenführen",
+      "Aus mehreren Einträgen wird einer"
+    ],
+    "04": [
+      "Angenehm im [Dunkelmodus]",
+      "Dunkel, hell oder System – in 7 Sprachen"
+    ]
+  },
+  "ru-Russian": {
+    "01": [
+      "[Освободите память]|за минуты",
+      "Найдите дубликаты, похожие фото, большие видео и скриншоты"
+    ],
+    "02": [
+      "Удаляйте [дубликаты фото]",
+      "Мы выберем лучший, остальное удалите"
+    ],
+    "03": [
+      "Объединяйте [дубликаты контактов]",
+      "Все повторы — в одну карточку"
+    ],
+    "04": [
+      "Удобно в [тёмной теме]",
+      "Тёмная, светлая или системная тема"
+    ]
+  },
+  "ro-Romanian": {
+    "01": [
+      "[Eliberează spațiu]|în câteva minute",
+      "Curăță telefonul: duplicate, poze similare și videoclipuri mari"
+    ],
+    "02": [
+      "Șterge [pozele duplicate]",
+      "Alegem cea mai bună poză, tu ștergi restul"
+    ],
+    "03": [
+      "Unește [contactele duplicate]",
+      "Combină dublurile într-un singur contact"
+    ],
+    "04": [
+      "[Modul întunecat]|pentru ochi odihniți",
+      "Întunecat, luminos sau sistem, în 7 limbi"
+    ]
+  },
+  "pl-Polish": {
+    "01": [
+      "[Zwolnij miejsce]|w kilka minut",
+      "Znajdź duplikaty, podobne zdjęcia, duże filmy i zrzuty ekranu"
+    ],
+    "02": [
+      "Usuń [zduplikowane zdjęcia]",
+      "Zostawiamy najlepsze, resztę usuwasz"
+    ],
+    "03": [
+      "Połącz [zduplikowane kontakty]",
+      "Jeden kontakt zamiast kilku powtórzeń"
+    ],
+    "04": [
+      "Wygodnie w [trybie ciemnym]",
+      "Ciemny, jasny lub systemowy – w 7 językach"
+    ]
+  }
+}
