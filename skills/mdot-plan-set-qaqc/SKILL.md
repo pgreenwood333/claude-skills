@@ -114,9 +114,12 @@ copy that you read on a render).
 
 ```bash
 python3 $S/markup_pdf.py "<plans.pdf>" qaqc_work/index qaqc_work/findings_reviewed.json "<name>_QAQC_markup.pdf"
-python3 $S/build_report.py qaqc_work/findings_reviewed.json qaqc_work/index "<name>_QAQC.xlsx"
+python3 $S/build_simple_report.py qaqc_work/findings_reviewed.json qaqc_work/index "<name>_QAQC.xlsx"
 ```
-Confirmed flags get a red highlight with the finding as the comment; any that cannot be located get a red sticky
+The workbook is a plain punch list: one tab per check, one row per sheet (Spelling: Text Found / Correct To;
+others: What's Wrong / Fix / Priority), XX placeholders on their own tab, plus Your Call and Rejected tabs. If the
+engineer wants the detailed version (evidence, locate, review notes), also run `build_report.py` with the same
+arguments into `<name>_QAQC_detail.xlsx`. Confirmed flags get a red highlight with the finding as the comment; any that cannot be located get a red sticky
 note on the sheet, so nothing is dropped (add `--include-uncertain` to mark those as well). Before delivering, render two
 marked-up pages to check the highlights sit on the right text, and open the workbook to check its tabs and counts.
 
