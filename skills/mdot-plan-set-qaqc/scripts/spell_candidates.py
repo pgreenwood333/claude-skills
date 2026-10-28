@@ -76,6 +76,13 @@ def main():
                 if (k, w) not in {(v["a"], v["b"]) for v in variants}:
                     variants.append(dict(a=w, b=k, count_a=len(occ[w]), count_b=len(occ[k]),
                                          where_a=occ[w][:5], where_b=occ[k][:5]))
+    # short words: a same-length swap or substitution of a dictionary word (RAOD/ROAD) is a typo, not a name
+    for w in sorted(unknown):
+        if len(w) == 4 and not any(v["a"] == w for v in variants):
+            fix = (sp.correction(w.lower()) or "").upper()
+            if fix and fix != w and len(fix) == len(w) and edit1(w, fix) and fix in known:
+                variants.append(dict(a=w, b=fix, count_a=len(occ[w]), count_b=len(occ[fix]),
+                                     where_a=occ[w][:20], where_b=occ[fix][:5], note="4-letter swap of a dictionary word"))
     names = {w for w in unknown if len(sheets_of(w)) >= 3 and not any(v["a"] == w or v["b"] == w for v in variants)}
     cands = []
     for w in sorted(unknown - names):

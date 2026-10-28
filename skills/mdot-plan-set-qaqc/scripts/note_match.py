@@ -221,23 +221,36 @@ def main():
                     " | ".join(n["lines"][:3]), "Confirm the structure is noted on its cross section",
                     [dict(page=n["page"], rect=n["bbox"])])
                 continue
-            x = min(cands, key=lambda c: abs(c["sta"] - n["sta"]))
-            a_l, b_l = [norm(t) for t in n["lines"]], [norm(t) for t in x["lines"]]
-            if a_l == b_l:
-                checks.append(dict(kind="xs", id=sid, page=n["page"], xs_page=x["page"], result="match"))
-                continue
-            diffs = []
-            for k in range(max(len(a_l), len(b_l))):
-                pa = a_l[k] if k < len(a_l) else "(missing)"
-                pb = b_l[k] if k < len(b_l) else "(missing)"
-                if pa != pb:
-                    diffs.append(f"line {k + 1}: profile '{pa}' vs XS '{pb}'")
-            xsh = sheet.get(x["page"], f"p{x['page']}")
-            checks.append(dict(kind="xs", id=sid, page=n["page"], xs_page=x["page"], result="mismatch", diffs=diffs))
-            add("high", [sh, xsh], [n["page"], x["page"]],
-                f"{sid}: profile note on {sh} does not match the cross-section note on {xsh}",
-                "; ".join(diffs[:4]), "Make the profile and cross-section notes identical",
-                [dict(page=n["page"], rect=n["bbox"]), dict(page=x["page"], rect=x["bbox"])])
+            x0 = min(cands, key=lambda c: abs(c["sta"] - n["sta"]))
+            # the same structure is often noted on two cross-section sheets (sheet breaks): check every copy
+            copies = [c for c in cands if abs(c["sta"] - x0["sta"]) < 0.005]
+            texts = {}
+            for c in copies:
+                texts.setdefault(tuple(norm(t) for t in c["lines"]), []).append(c)
+            if len(texts) > 1:
+                xshs = sorted({sheet.get(c["page"], f"p{c['page']}") for c in copies})
+                add("high", xshs, sorted({c["page"] for c in copies}),
+                    f"{sid}: the cross-section notes for this structure disagree ({', '.join(xshs)})",
+                    " || ".join(" | ".join(c["lines"]) for c in copies)[:600],
+                    "Make every cross-section copy of this note identical (and match the profile)",
+                    [dict(page=c["page"], rect=c["bbox"]) for c in copies])
+            for x in copies:
+                a_l, b_l = [norm(t) for t in n["lines"]], [norm(t) for t in x["lines"]]
+                if a_l == b_l:
+                    checks.append(dict(kind="xs", id=sid, page=n["page"], xs_page=x["page"], result="match"))
+                    continue
+                diffs = []
+                for k in range(max(len(a_l), len(b_l))):
+                    pa = a_l[k] if k < len(a_l) else "(missing)"
+                    pb = b_l[k] if k < len(b_l) else "(missing)"
+                    if pa != pb:
+                        diffs.append(f"line {k + 1}: profile '{pa}' vs XS '{pb}'")
+                xsh = sheet.get(x["page"], f"p{x['page']}")
+                checks.append(dict(kind="xs", id=sid, page=n["page"], xs_page=x["page"], result="mismatch", diffs=diffs))
+                add("high", [sh, xsh], [n["page"], x["page"]],
+                    f"{sid}: profile note on {sh} does not match the cross-section note on {xsh}",
+                    "; ".join(diffs[:4]), "Make the profile and cross-section notes identical",
+                    [dict(page=n["page"], rect=n["bbox"]), dict(page=x["page"], rect=x["bbox"])])
 
     # same structure ID used for different structures (different stations)
     for sid_, ns in by_id.items():

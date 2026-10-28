@@ -10,6 +10,9 @@ Goal: real spelling errors on any sheet, including sheet titles, notes, table ti
    - inconsistent spelling of proper names (streets, the project name) across sheets.
    Not errors: abbreviations, MDOT/AASHTO terms, pay-item wording, units, street and place names used consistently,
    intentional all-caps labels, words broken across two lines on purpose.
+   A name can still hold a typo: `variants` with the note "4-letter swap of a dictionary word" (RAOD/ROAD) are
+   checked even inside owner or company names; report them low with "(verify against the deed)". Also skim
+   `likely_names` once for anything that is one swapped or wrong letter from a real word.
 3. Candidates from OCR (`source: ocr`, especially with `ocr_only: true` or low `conf`) may be OCR misreads. Look at
    the plan before reporting: `render <pdf> <index> <page> --clip <rect padded by ~20 pt> --dpi 300`. Report it only
    if the printed text is wrong. Pasted table images are a common place for real typos, so do check them.
@@ -22,6 +25,8 @@ Goal: real spelling errors on any sheet, including sheet titles, notes, table ti
 6. Also skim each sheet's title (from `sheets`) and each chunk's notes for errors a dictionary passes: wrong word
    ("PAVEMENT MAKING"), missing letters forming another word, wrong units.
 7. Write `<work>/findings/spelling.json` (format: `references/findings_schema.md`), ids SPL-001 onward. Use the
-   candidate's `rect` in `locate` (it is already in PDF points). Severity: medium for titles, notes and pay-item
+   candidate's `rect` in `locate` (it is already in PDF points). One finding covers every occurrence: list EVERY
+   page from the candidate's `where` list in `pdf_pages`, `sheet_ids` and `locate`, not just the first few
+   (a typo on 4 sheets needs all 4 marked). Severity: medium for titles, notes and pay-item
    text; low for minor typos elsewhere. Evidence = the word in its printed line; suggested_fix = the corrected text.
 Reply with: count of errors, and how many OCR candidates you dismissed as misreads.
