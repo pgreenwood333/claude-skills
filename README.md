@@ -5,6 +5,7 @@ This repo updates automatically whenever I change a published skill.
 
 | Skill | What it does |
 |---|---|
+| [app-store-release](skills/app-store-release) | Ship an iOS app update end to end through the App Store Connect API and Expo EAS: create the new version, refresh outdated metadata and What's New in every locale, create new subscriptions or in-app purchases priced for  |
 | [appstore-screenshot-captioning](skills/appstore-screenshot-captioning) | Make App Store / Google Play screenshots — from raw iPhone captures to finished, localized, keyword-rich marketing slides (flat brand-colored background, two-tone keyword titles, device frame, enlarged "3D pop-out" UI ca |
 | [expo-device-testing](skills/expo-device-testing) | > |
 | [mdot-extract-standard-drawings](skills/mdot-extract-standard-drawings) | Extracts the roadway standard drawings called out in an MDOT plan set's Detailed Index into a standalone \"Standards\" companion PDF, pulled from the current MDOT standards master in OneDrive and named from the plan set' |

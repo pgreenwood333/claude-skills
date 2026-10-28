@@ -1,0 +1,35 @@
+{
+ "subscription_groups": [
+  {
+   "reference_name": "Premium",
+   "localizations": {"en-US": {"name": "Premium"}, "es-MX": {"name": "Premium"}},
+   "subscriptions": [
+    {
+     "product_id": "com.example.app.premium.yearly",
+     "reference_name": "Premium Yearly",
+     "period": "ONE_YEAR",
+     "group_level": 1,
+     "usd_price": "29.99",
+     "intro_offer": {"mode": "FREE_TRIAL", "duration": "ONE_WEEK"},
+     "localizations": {
+      "en-US": {"name": "Premium Yearly", "description": "All features, billed yearly"},
+      "es-MX": {"name": "Premium anual", "description": "Todas las funciones, pago anual"}
+     },
+     "review_note": "Unlock from the paywall on first launch or Settings > Premium.",
+     "review_screenshot": "paywall.png"
+    }
+   ]
+  }
+ ],
+ "in_app_purchases": [
+  {
+   "product_id": "com.example.app.premium.lifetime",
+   "reference_name": "Premium Lifetime",
+   "type": "NON_CONSUMABLE",
+   "usd_price": "49.99",
+   "localizations": {"en-US": {"name": "Lifetime", "description": "All features, pay once"}},
+   "review_note": "Lifetime option on the paywall.",
+   "review_screenshot": "paywall.png"
+  }
+ ]
+}
