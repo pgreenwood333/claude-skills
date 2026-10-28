@@ -89,7 +89,13 @@ def vector_labels(page, area, lines):
     """Assign each filled letter shape to the invisible text line it belongs to."""
     if not lines:
         return []
-    centers = [(li, r) for li, ln in enumerate(lines) for r in ln["chars"]]
+    G = 20.0   # grid cell (pt) so each letter shape is only compared with nearby characters
+    grid = {}
+    for li, ln in enumerate(lines):
+        for r in ln["chars"]:
+            for gx in range(int((r.x0 - 1) // G), int((r.x1 + 1) // G) + 1):
+                for gy in range(int((r.y0 - 1) // G), int((r.y1 + 1) // G) + 1):
+                    grid.setdefault((gx, gy), []).append((li, r))
     glyphs = {}
     for d in page.get_drawings():
         if d.get("type") not in ("f", "fs") or d.get("fill") is None:
@@ -99,7 +105,7 @@ def vector_labels(page, area, lines):
             continue
         c = pymupdf.Point((r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2)
         best, bd = None, 1e9
-        for li, cr in centers:
+        for li, cr in grid.get((int(c.x // G), int(c.y // G)), ()):
             if (cr + (-1, -1, 1, 1)).contains(c):
                 dist = abs(pymupdf.Point((cr.x0 + cr.x1) / 2, (cr.y0 + cr.y1) / 2) - c)
                 if dist < bd:

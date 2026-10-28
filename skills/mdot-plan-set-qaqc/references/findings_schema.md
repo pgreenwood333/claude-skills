@@ -9,7 +9,7 @@ Write `{"findings": [ ... ]}` to the path in your brief. One object per flag:
   "severity": "medium",
   "sheet_ids": ["EQ-1"],
   "pdf_pages": [10],
-  "evidence": "PERMAMENT EROSION CONTROL",
+  "evidence": "`PERMAMENT EROSION CONTROL` in the table title",
   "finding": "Misspelling in the EQ-1 table title: PERMAMENT",
   "suggested_fix": "PERMANENT EROSION CONTROL",
   "locate": [{"page": 10, "text": "PERMAMENT"}],
@@ -18,12 +18,15 @@ Write `{"findings": [ ... ]}` to the path in your brief. One object per flag:
 }
 ```
 
-- `id`: prefix by task (IDX, SPL, OVL, QTY) plus a number; unique within your file.
-- `task`: `index`, `spelling`, `overlap` or `quantity`.
+- `id`: prefix by task (IDX, SPL, OVL, NM, COL, QTY) plus a number; unique within your file.
+- `task`: `index`, `spelling`, `overlap`, `notematch`, `color` or `quantity`.
 - `severity`: `high` (wrong information a contractor could build or bid from: wrong sheet number, missing sheet,
   quantity mismatch, unreadable dimension), `medium` (clear error with low impact: misspelling in a title or note,
   overlapping labels that are still decipherable), `low` (cosmetic or consistency).
-- `evidence`: the exact text as printed (or both conflicting values). Short.
+- `evidence`: every printed string in backticks, exactly as printed (same word order and spelling); your own words
+  outside them. Backticks, not double quotes, because plans use " for inches. Both values when two conflict:
+  `` `18" RCP` on the WK-3 plan vs `24" RCP` in the profile ``. `validate_findings.py` checks each backticked string
+  against the page. Text with no text copy (read from a render): add `"evidence_source": "visual"` and a `crop`.
 - `locate`: where to highlight. Prefer `{"page": N, "rect": [x0, y0, x1, y1]}` in PDF points when you have a box
   (word lists, OCR boxes, overlap candidates, tile coordinates). Otherwise `{"page": N, "text": "exact string"}`;
   add `"near": [x0, y0, x1, y1]` if the string appears more than once on the page.

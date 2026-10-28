@@ -45,6 +45,12 @@ def main():
     for f in findings:
         if f.get("id") in reviews:
             f["review"] = reviews[f["id"]]
+    for f in findings:
+        if f.get("gate") and not f["gate"].get("pass") and f["review"].get("verdict") == "confirmed" \
+                and not f["review"].get("gate_override"):
+            f["review"] = {"verdict": "uncertain", "note": "confirmed but failed the evidence gate "
+                           f"{f['gate']['problems']}: fix the evidence or add gate_override with the reason"}
+            problems.append(f"{f['id']}: confirmed but failed the evidence gate; set back to uncertain")
     findings = [f for f in findings if f.get("task") in tasks]
     data = dict(project=load_json(a.project, {}) if a.project else {}, tasks=tasks, findings=findings, quantities=q)
     save_json(out, data)

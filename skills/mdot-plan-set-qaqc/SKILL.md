@@ -1,6 +1,6 @@
 ---
 name: "mdot-plan-set-qaqc"
-description: "QA/QC review of an MDOT roadway plan set PDF. Use when someone wants to QC, QA/QC, check or review plans or a plan set. Indexes and chunks the whole set (text layer + OCR of pasted tables, hybrid keyword/vector search), asks which checks to run (Detailed Index vs sheets, spelling, overlapping text in WK profiles, quantity reconciliation), runs one subagent per check, then the orchestrator verifies every flag, highlights them in red in the PDF and builds a color-coded Excel workbook."
+description: "QA/QC review of an MDOT roadway plan set PDF. Use when someone wants to QC, QA/QC, check or review plans or a plan set. Indexes and chunks the whole set (text layer + OCR of pasted tables, hybrid keyword/vector search), asks which checks to run (Detailed Index vs sheets, spelling, overlapping text in WK profiles, print color on WK sheets (proposed drainage blue, existing purple, rest black), plan/profile/cross-section note match, quantity reconciliation), runs one subagent per check, gates every flag on evidence printed on the sheet, has an independent grader score the run and send weak checks back, highlights confirmed flags in red in the PDF, builds a color-coded Excel workbook, and keeps a memory of the engineer's corrections so later runs improve."
 ---
 
 # MDOT Plan Set QA/QC
@@ -14,14 +14,23 @@ Scripts live in this skill's `scripts/` folder (call it `$S`). Agent briefs are 
 
 ## Step 0: Ask which checks to run (always first)
 
-Unless the user already named the checks, ask with AskUserQuestion before doing any work:
-- Question 1 (multiSelect, header "Checks"): "Which QA/QC checks should I run on this plan set?"
+Unless the user already named the checks, ask with AskUserQuestion before doing any work (one call, three
+questions; the tool allows at most 4 options per question):
+- Question 1 (multiSelect, header "Sheet checks"): "Which sheet checks should I run?"
   - Index check: Detailed Index descriptions, Sheet IDs and sheet numbers vs the actual sheets
-  - Spelling: misspellings, repeated words and inconsistent spellings on every sheet
-  - Overlapping text: text running into other text in the WK profile views
-  - Quantity reconciliation: EQ vs Summary of Quantities, and working-sheet recaps vs EQ
-- Question 2 (single select, header "Overlap area"), only meaningful if overlapping text is chosen: "Profile view only (Recommended)" or "Profile and plan view" (plan view is noisy because utilities overlap).
+  - Spelling: misspellings, repeated words, placeholders and inconsistent spellings on every sheet
+  - Note match: plan note vs profile note on the WK sheets, and profile note vs cross-section (9000) note
+- Question 2 (multiSelect, header "WK checks"): "Which WK plan-profile checks should I run?"
+  - Overlapping text, profile view only (Recommended)
+  - Overlapping text, profile and plan view (plan view is noisy because utilities overlap)
+  - Print color: proposed drainage blue, existing/surveyed purple, everything else black
+- Question 3 (single select, header "Quantities"): "Run the quantity reconciliation (EQ vs Summary of Quantities,
+  working-sheet recaps vs EQ)?" Yes (Recommended) / No.
 Run only what was picked. Indexing (Step 2) always runs, because every check uses it.
+
+Memory: find `qaqc_memory/` beside the PDF or in a parent folder (the nearest one wins); if there is none, create it
+beside the folder that holds the PDF. If `qaqc_memory/lessons.md` exists, read it now and give each agent and the
+grader its section. These are the engineer's approved corrections from past runs and override the briefs.
 
 ## Step 1: Set up
 
@@ -64,22 +73,37 @@ could not read). Use the general-purpose agent type.
 | Spelling | `references/agent_spelling.md` | `qaqc_work/findings/spelling.json` |
 | Overlapping text | `references/agent_overlap.md` (tell it profile-only or profile + plan) | `qaqc_work/findings/overlap.json` |
 | Quantity reconciliation | `references/agent_quantities.md` | `qaqc_work/qty/*.json` and `quantities.json` |
+| Note match | `references/agent_notematch.md` | `qaqc_work/findings/notematch.json` |
+| Print color | `references/agent_color.md` | `qaqc_work/findings/color.json` |
 
-## Step 4: Review every flag yourself
+## Step 4: Gate, grade, revise
 
-You are the final checker. The agents find; you confirm.
-```bash
-python3 $S/merge_findings.py qaqc_work --tasks <chosen,tasks>
-```
-Then go through `qaqc_work/findings_reviewed.json`, every item, highest severity first:
-- Look at the evidence: render the area (`render ... --clip` around the `locate` rect or the text, 250 dpi) or open
-  the crop the agent made. Confirm it is real and correctly described.
-- Spelling from OCR: decide whether the plan is misspelled or the OCR misread it. Only the plan's errors count.
-- Overlaps: confirm the text really collides or is unreadable; reject legible stacked callouts.
+You are the final checker, but you do not grade your own team's work alone. Three layers, in this order:
+
+1. **Evidence gate (code, cannot be argued with).**
+   `python3 $S/validate_findings.py "<plans.pdf>" qaqc_work/index qaqc_work`
+   Every flag must name the right sheet, land on its page, and quote text that is really printed there. Failures
+   are written into each finding as `gate.problems`. If one check fails the gate on more than 2 flags, send that
+   agent its list once ("fix the quote to the exact printed text, or drop the flag") and re-run the gate.
+2. **Independent grader (fresh subagent).** Merge first:
+   `python3 $S/merge_findings.py qaqc_work --tasks <chosen,tasks>`   # index,spelling,overlap,notematch,color,quantity
+   Then spawn one general-purpose subagent with `references/grader.md`, the PDF, `qaqc_work/index`,
+   `qaqc_work/findings_reviewed.json`, `$S`, the checks that ran and the lessons. Do not give it the agents' replies
+   or your own opinions: it judges the output only. It writes `qaqc_work/grade.json`.
+3. **Revise (at most 2 rounds).** If `grade.json` says `needs_revision`, send each failing check's `revise` list and
+   `missed` items to that check's agent (SendMessage to the same agent if you can, else a new one with its brief),
+   re-run the gate, merge, and grade again with a fresh grader. Stop after 2 rounds even if not satisfied, and say
+   which criteria still fail in the report.
+
+Then the final pass is yours. Copy the grader's verdicts to `qaqc_work/reviews.json` and check the ones that matter:
+- Every high-severity flag and every flag the grader marked `uncertain`: render the area (`render ... --clip`
+  around the `locate` rect, 250 dpi) and decide.
 - Quantities: re-read both numbers of every MISMATCH at high zoom, and spot-check 5 MATCH rows against the sheets.
   If a number was misread, fix the agent's transcription file, re-run `reconcile.py`, and re-merge.
-Record decisions in `qaqc_work/reviews.json` as `{"<id>": {"verdict": "confirmed|rejected|uncertain", "note": "..."}}`
-and re-run merge with `--reviews qaqc_work/reviews.json`. Reject with a reason; never delete a flag.
+Format: `{"<id>": {"verdict": "confirmed|rejected|uncertain", "note": "..."}}`. Re-run merge with
+`--reviews qaqc_work/reviews.json`. Reject with a reason; never delete a flag. Merge refuses a `confirmed` flag that
+failed the gate unless the review carries `"gate_override": "<why the evidence is right>"` (e.g. text with no text
+copy that you read on a render).
 
 ## Step 5: Mark up the PDF and build the workbook
 
@@ -94,11 +118,30 @@ marked-up pages to check the highlights sit on the right text, and open the work
 ## Step 6: Report in chat
 
 Lead with counts per check (and Table 1 / Table 2 status counts if quantities ran), then the five most important
-flags with Sheet IDs, then anything that could not be read. Link both output files.
+flags with Sheet IDs, then anything that could not be read. Add the grader's scoreboard per check in one line and
+how many revision rounds ran. Link both output files.
+
+## Step 7: Remember (every run)
+
+```bash
+python3 $S/learn.py record qaqc_work <qaqc_memory> --plan-set "<pdf name>"
+```
+This logs every flag with the grader's and your verdict. Tell the user the run ID it prints and that they can
+correct any flag later ("SPL-005 was wrong, that's the street's real name"; "you missed X on WK-4"). When they do:
+`learn.py feedback <qaqc_memory> <run_id> <id> confirmed|rejected|missed "<their words>" [--task <task>]`.
+Then run `learn.py lessons <qaqc_memory>`. It proposes a lesson only when the same pattern repeats in 2 or more runs
+(one bad call is not a pattern). Show the proposals to the user and add only the ones they approve, written as a rule
+the agents can follow: `learn.py accept <qaqc_memory> <task> "<rule>"`. Never add a lesson they did not approve.
+`learn.py stats` shows precision per check over time.
 
 ## Rules that apply to every agent
 
-- Quote evidence exactly as printed. Cite Sheet IDs, never just page numbers.
+- Quote evidence exactly as printed, in backticks (plans use " for inches); your own words go outside them. The gate checks every
+  quoted string against the sheet. Text read from a render because it has no text copy: set
+  `"evidence_source": "visual"` and give a crop.
+- If you cannot read something or are not sure, say so ("could not read the EQ-2 table at this zoom"). An honest
+  "not sure" is always better than a guess; the grader treats it as useful, a wrong flag as a failure.
+- Cite Sheet IDs, never just page numbers.
 - Every finding carries a `locate` entry (a rect in PDF points, or exact text on a page) so it can be highlighted.
 - Numbers come from the sheets, never from memory or inference. Transcribe, then let the scripts do the arithmetic.
 - Do not read the whole PDF into context. Use search, chunks, word lists and targeted renders.

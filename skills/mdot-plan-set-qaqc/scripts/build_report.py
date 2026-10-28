@@ -118,6 +118,10 @@ def main():
         sheet(wb, "Spelling", cols, rows_for("spelling", kept), widths, status_col=1)
     if "overlap" in tasks:
         sheet(wb, "Overlapping Text", cols, rows_for("overlap", kept), widths, status_col=1)
+    if "notematch" in tasks:
+        sheet(wb, "Note Match", cols, rows_for("notematch", kept), widths, status_col=1)
+    if "color" in tasks:
+        sheet(wb, "Print Color", cols, rows_for("color", kept), widths, status_col=1)
     if "quantity" in tasks and q:
         t1 = [[i, r.get("section", ""), r["pay_item"], r["description"], r["unit"], r["eq_qty"], jl(r["eq_sheets"]), r["sqs_qty"],
                jl(r["sqs_sheets"]), r["status"], r["notes"]] for i, r in enumerate(q.get("table1", []), 1)]

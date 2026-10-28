@@ -7,6 +7,8 @@ TASKS = {
     "spelling": "Spelling",
     "overlap": "Overlapping Text",
     "quantity": "Quantities",
+    "notematch": "Note Match",
+    "color": "Print Color",
 }
 
 
