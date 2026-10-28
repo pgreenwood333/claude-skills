@@ -65,16 +65,21 @@ OCR words tagged `⟨?⟩` in chunks are under 80% confidence.
 
 Spawn them in a single message so they run in parallel. Give each: the PDF path, `qaqc_work/index`, `qaqc_work`,
 the scripts path, its brief, and `references/findings_schema.md`. Ask for a terse reply (counts and anything they
-could not read). Use the general-purpose agent type.
+could not read). Use the general-purpose agent type with the model and effort in the table (the engineer set
+these: the scripts do the exact work, so Sonnet judges candidates well; quantities are read off low-resolution
+table images where one misread digit is a high-severity error, so they get Opus). If the agent tool here cannot
+set a model or effort, run them on the session's model and say so in the report.
 
-| Check | Brief | Writes |
-|---|---|---|
-| Index check | `references/agent_index.md` | `qaqc_work/findings/index.json` |
-| Spelling | `references/agent_spelling.md` | `qaqc_work/findings/spelling.json` |
-| Overlapping text | `references/agent_overlap.md` (tell it profile-only or profile + plan) | `qaqc_work/findings/overlap.json` |
-| Quantity reconciliation | `references/agent_quantities.md` | `qaqc_work/qty/*.json` and `quantities.json` |
-| Note match | `references/agent_notematch.md` | `qaqc_work/findings/notematch.json` |
-| Print color | `references/agent_color.md` | `qaqc_work/findings/color.json` |
+| Check | Brief | Model, effort | Writes |
+|---|---|---|---|
+| Index check | `references/agent_index.md` | sonnet, high | `qaqc_work/findings/index.json` |
+| Spelling | `references/agent_spelling.md` | sonnet, high | `qaqc_work/findings/spelling.json` |
+| Overlapping text | `references/agent_overlap.md` (tell it profile-only or profile + plan) | sonnet, high | `qaqc_work/findings/overlap.json` |
+| Quantity reconciliation | `references/agent_quantities.md` | opus, high | `qaqc_work/qty/*.json` and `quantities.json` |
+| Note match | `references/agent_notematch.md` | sonnet, high | `qaqc_work/findings/notematch.json` |
+| Print color | `references/agent_color.md` | sonnet, high | `qaqc_work/findings/color.json` |
+
+Revision rounds (Step 4) re-run a check on the same model and effort.
 
 ## Step 4: Gate, grade, revise
 
@@ -87,7 +92,7 @@ You are the final checker, but you do not grade your own team's work alone. Thre
    agent its list once ("fix the quote to the exact printed text, or drop the flag") and re-run the gate.
 2. **Independent grader (fresh subagent).** Merge first:
    `python3 $S/merge_findings.py qaqc_work --tasks <chosen,tasks>`   # index,spelling,overlap,notematch,color,quantity
-   Then spawn one general-purpose subagent with `references/grader.md`, the PDF, `qaqc_work/index`,
+   Then spawn one general-purpose subagent on **opus, high effort** with `references/grader.md`, the PDF, `qaqc_work/index`,
    `qaqc_work/findings_reviewed.json`, `$S`, the checks that ran and the lessons. Do not give it the agents' replies
    or your own opinions: it judges the output only. It writes `qaqc_work/grade.json`.
 3. **Revise (at most 2 rounds).** If `grade.json` says `needs_revision`, send each failing check's `revise` list and
