@@ -13,7 +13,17 @@ Pages: with --index, WK pages are prefix WK and XS pages are sheets numbered 900
 "notematch") plus every comparison made, so the agent and orchestrator can verify each one.
 """
 import argparse, json, os, re
+import functools
 import pymupdf
+
+
+@functools.lru_cache(maxsize=4)
+def open_pdf(path):
+    """Open each PDF once; big sets were re-opened inside loops."""
+    return pymupdf.open(path)
+
+
+OPENING = re.compile(r"\b\d+\s*@\s*\d+\"")   # opening counts like 2 @ 18"
 from notes_core import extract_notes, K
 
 PIPE = re.compile(r"(\d+(?:\.\d+)?)'\s*(-)?\s*(\d+(?:\.\d+)?)\"\s*(?:X\s*(\d+)\"\s*)?([A-Z][A-Z0-9-]*)?", re.I)
@@ -60,8 +70,9 @@ def same_material(a, b, size):
     return "X" in size and {a, b} <= {"RCP", "RCAP"}  # arch pipe: plan writes 65" X 40" RCP, profile writes RCAP
 
 
+@functools.lru_cache(maxsize=None)
 def sheet_name(pdf, page_no):
-    page = pymupdf.open(pdf)[page_no - 1]
+    page = open_pdf(pdf)[page_no - 1]
     r = page.rect
     t = page.get_text("text", clip=pymupdf.Rect(r.width * 0.9, r.height * 0.85, r.x1, r.y1))
     m = re.findall(r"\b([A-Z]{1,4}-\d+[A-Z]{0,3})\b", t)
@@ -82,7 +93,7 @@ def profile_top(page):
 
 def plan_items(pdf, page_no):
     """Structure labels and pipe labels in the plan view (above the profile), as text lines with boxes (points)."""
-    page = pymupdf.open(pdf)[page_no - 1]
+    page = open_pdf(pdf)[page_no - 1]
     top = profile_top(page)
     labels, pipes = [], []
     for b in page.get_text("dict")["blocks"]:
@@ -94,7 +105,7 @@ def plan_items(pdf, page_no):
             m = LABEL.match(t)
             if m:
                 labels.append(dict(id=f"{m.group(1)} {m.group(2)}", rect=list(r), text=t))
-            elif PIPE.search(t) and "@" not in t:
+            elif PIPE.search(t) and not OPENING.search(t):   # "2 @ 18\"" is an opening count, not a pipe run
                 for pp in pipes_in(t):
                     pipes.append(dict(pipe=pp, rect=list(r), text=t))
     return labels, pipes

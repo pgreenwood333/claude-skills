@@ -29,7 +29,12 @@ DPI = 600
 # ------------------------------------------------------------------ profile grid detection
 def profile_regions(page):
     pr = page.rect
-    nums = [w for w in page.get_text("words") if NUM.match(w[4])]
+    seen, nums = set(), []
+    for w in page.get_text("words"):           # CAD overprints repeat each label in place: keep one copy
+        k = (w[4], round(w[0]), round(w[1]))
+        if NUM.match(w[4]) and k not in seen:
+            seen.add(k)
+            nums.append(w)
     by_val = {}
     for w in nums:
         by_val.setdefault(w[4], []).append(w)

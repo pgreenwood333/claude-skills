@@ -36,8 +36,12 @@ DRAIN = re.compile(
     r"\b(\d+\"?\s*(RCP|CMP|HDPE|PVC|RCAP|CPP|SRCP|RCBC|RCB)|RCP|RCAP|CMP|HDPE|PIPES?|CULVERTS?|INLETS?|J\.?B\.?|"
     r"JUNCTION BOX|MANHOLES?|M\.?H\.?|HEADWALLS?|ENDWALLS?|END SECTIONS?|FLUMES?|(BOX|BRIDGE) CULVERT|DBL\.?|"
     r"F\.?L\.?|FLOW ?LINE|[UD]S ?FL|USFL|DSFL|SKEW|D\.?A\.?\s*=|OUTLET|DROP INLET|TYPE \"?[A-Z0-9]+\"? INLET|"
-    r"PAVED DITCH|SUBDRAIN|UNDERDRAIN|STORM DRAIN|CATCH BASIN)\b", re.I)
+    r"ALT|ALTERNATE|INV\.?|INVERT|(SS|GI|DI|JB|MH|FE|SE|CB|DS|HW|B)-\d{1,2}|PAVED DITCH|SUBDRAIN|UNDERDRAIN|STORM DRAIN|CATCH BASIN)\b", re.I)
 NOT_DRAIN = re.compile(r"\b(GAS|WATER|FIBER|STEEL|TELEPHONE|ELECTRIC|POWER|SILT|EROSION|EARTHWORK|SANITARY)\b", re.I)
+# drainage structure tags ([414 A]) and box dimension stacks (5.85' / 5.00' / 2'6") are drainage too
+STRUCT = re.compile(r"^\[\s*\d+\s*[A-Z]?\s*\]?$|^\d+(\.\d+)?' / \d+(\.\d+)?' / \d+'\s*\d*\"?$|^\d+' - \d+\"$")
+# a blue note is only judged when it has real words (bare stations/elevations are pieces of a drainage note)
+WORDY = re.compile(r"\b(?!STA\b|EL\b|LT\b|RT\b|INV\b|TOP\b)[A-Z]{3,}\b")
 # ditch grades print BLACK in the profile (engineer's rule), and so do their station/elevation callouts
 DITCH = re.compile(r"\bDITCH GRADE\b|\b(LT|RT) DITCH\b", re.I)
 CALLOUT = re.compile(r"^((LT|RT)\s*\d+\+\d+(\.\d+)?|EL\.?\s*\d+(\.\d+)?|[+-]?\d+(\.\d+)?%|NOTE:?|\s|/)+$", re.I)
@@ -126,7 +130,8 @@ def judge(note):
     cols = [l["color"] for l in note if l["color"]]
     main = Counter(cols).most_common(1)[0][0] if cols else None
     has_ex, has_act = bool(EXIST.search(text)), bool(ACTION.search(text))
-    has_dr = bool(DRAIN.search(text)) and not NOT_DRAIN.search(text) and len(note) <= 8
+    has_dr = (bool(DRAIN.search(text)) or bool(STRUCT.match(text.strip()))) and not NOT_DRAIN.search(text) \
+        and len(note) <= 8
     existing_item = has_ex and not has_act        # labels the existing thing itself
     proposed_words = bool(PROPOSED.search(text)) or (has_ex and has_act)
     rules = []
@@ -142,7 +147,7 @@ def judge(note):
         rules.append("DRAIN_BLACK")
     if DITCH.search(text) and main not in ("black", None):
         rules.append("DITCH_NOT_BLACK")
-    elif main == "blue" and not has_dr:
+    elif main == "blue" and not has_dr and WORDY.search(text):
         rules.append("BLUE_NO_DRAIN")
     return text, main, rules, has_ex, has_dr
 
