@@ -31,7 +31,16 @@ import openpyxl
 import requests
 
 URL = "https://aashtoreports.mdot.ms.gov/trnsreportspublic/reports/BidPrices.aspx"
-CACHE_DIR = Path(os.environ.get("MDOT_BID_CACHE", "/Volumes/PGExtHD/OPCC/cache"))
+def _cache_dir() -> Path:
+    """MDOT_BID_CACHE if set, else the external drive on Peyton's Mac, else ~/.cache (e.g. in Cowork)."""
+    if os.environ.get("MDOT_BID_CACHE"):
+        return Path(os.environ["MDOT_BID_CACHE"])
+    if Path("/Volumes/PGExtHD").is_dir():
+        return Path("/Volumes/PGExtHD/OPCC/cache")
+    return Path.home() / ".cache" / "mdot-bid-prices"
+
+
+CACHE_DIR = _cache_dir()
 MAX_YEARS_BACK = 10
 FRESH_DAYS = 7  # ranges that end "today" are reused for this many days
 

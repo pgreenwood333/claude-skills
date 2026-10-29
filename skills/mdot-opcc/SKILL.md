@@ -5,8 +5,13 @@ description: "Build a Mississippi DOT (MDOT) Opinion of Probable Construction Co
 
 # MDOT Opinion of Probable Construction Cost
 
-Scripts are in this skill's `scripts/` folder (call it `$S`). Python 3 with `openpyxl`, `requests`, `pymupdf`.
-MDOT downloads are cached in `/Volumes/PGExtHD/OPCC/cache/` (set `MDOT_BID_CACHE` to move it).
+Scripts are in this skill's `scripts/` folder (call it `$S`). Needs Python 3 with `openpyxl`, `requests`, `pymupdf`,
+and `pycel` (used for sizing columns; optional). If any are missing (e.g. in Cowork), run
+`pip install openpyxl requests pymupdf pycel --break-system-packages -q`.
+The scripts must be able to reach `aashtoreports.mdot.ms.gov` over the internet. If that is blocked, say so;
+never make up prices.
+MDOT downloads are cached in `/Volumes/PGExtHD/OPCC/cache/` when that drive is present, otherwise in
+`~/.cache/mdot-bid-prices` (set `MDOT_BID_CACHE` to choose).
 
 ## Price lookup on its own
 
