@@ -188,7 +188,43 @@ def read_xlsx(path: str) -> dict:
 
 
 # ---------------------------------------------------------------- shared
+def _is_label(row) -> bool:
+    name = " ".join(row["description"].split())
+    return name.upper() == "OR" or bool(SECTION_RE.fullmatch(name))
+
+
+def _merge_wrapped(rows: list[dict]) -> list[dict]:
+    """A pay item whose description wraps onto 2+ lines leaves text-only lines next to the item line (the item
+    number, unit or quantity may sit on any of them). Join those lines onto the item: first to the item right
+    after them if its description is empty, otherwise onto the item right before them (same sheet)."""
+    out = [dict(r) for r in rows]
+    used = set()
+    for k, r in enumerate(out):
+        if r["item"] or not r["description"].strip() or _is_label(r):
+            continue
+        nxt = next((j for j in range(k + 1, len(out)) if out[j]["item"] or _is_label(out[j])), None)
+        prv = next((j for j in range(k - 1, -1, -1) if out[j]["item"] or _is_label(out[j])), None)
+        tgt = None
+        if nxt is not None and out[nxt]["item"] and out[nxt]["sheet"] == r["sheet"] and not out[nxt]["description"]:
+            tgt, before = nxt, True
+        elif prv is not None and out[prv]["item"] and out[prv]["sheet"] == r["sheet"]:
+            tgt, before = prv, False
+        if tgt is None:
+            continue
+        t = out[tgt]
+        t["description"] = (r["description"] + " " + t["description"]).strip() if before else \
+            (t["description"] + " " + r["description"]).strip()
+        if not t["unit"] and r["unit"]:
+            t["unit"] = r["unit"]
+        if not any(p is not None or f is not None for p, f in t["qtys"]) and \
+                any(p is not None or f is not None for p, f in r["qtys"]):
+            t["qtys"] = r["qtys"]
+        used.add(k)
+    return [r for k, r in enumerate(out) if k not in used]
+
+
 def _assemble(path, rows, county, job, projects) -> dict:
+    rows = _merge_wrapped(rows)
     use_final = any(f is not None for r in rows for _, f in r["qtys"])
     sections, cur, warnings = [], None, []
     pending_or, last_item = False, None
