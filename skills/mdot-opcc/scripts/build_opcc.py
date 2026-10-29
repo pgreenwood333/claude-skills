@@ -50,6 +50,8 @@ UNITS = {
     "EA": "Each", "LS": "Lump Sum", "GAL": "Gallon", "LBS": "Pounds", "LB": "Pounds", "SF": "Square Feet",
     "HRS": "Hours", "HR": "Hours", "STA": "Station", "MI": "Mile", "MILE": "Mile", "KGAL": "Thousand Gallon",
     "MGAL": "Thousand Gallon",
+    "K": "Thousand", "M": "Thousand", "EA (K)": "Thousand", "CF": "Cubic Feet", "MBF": "Thousand Board Feet",
+    "MFBM": "Thousand Board Feet",
 }
 
 # ------------------------------------------------------------------ pricing
