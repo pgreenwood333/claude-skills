@@ -42,7 +42,11 @@ Job number and county come from the SQ header (e.g. "HINDS : 123456-301000").
 `python3 $S/read_sq.py <roadway SQ.pdf> [<bridge SQ.pdf> ...] --out opcc_work/sq.json`
 Pass every SQ sheet set (roadway, bridge, ...); same-named sections are combined. Ask for the bridge
 SQ (SQ-BR sheets) if the job has a bridge and only the roadway SQ was given.
-It splits bid sections on rows like "BASE BID", "A1"/"A2" (→ ADD OPTION 1/2) and skips note bubbles and notes
+Everything is Base Bid unless the SQ has an explicit label row ("BASE BID", "ADD OPTION 1", "A1"/"A2" → ADD OPTION
+1/2, "ADDITIVE ALTERNATE 2"); any other text-only row is ignored with a warning. "OR" rows mark alternates (e.g.
+304-F001 OR 304-F002 OR 304-F003, same quantity): the OPCC gets ONE line for the group, priced with the alternate
+whose suggested MDOT price is lowest, and REMARKS names the others with their prices.
+It skips note bubbles and notes
 below the table. An item whose description ends in "Base Bid" or "Add Option n" (e.g. "Sunshade Add Option 3")
 goes on that sheet. The same pay item on both sheets (e.g. roadway and bridge Structure Excavation) stays as
 separate rows. Mention any notes on the sheets (e.g. "NEED PAY ITEM FOR ...") in the delivery message.

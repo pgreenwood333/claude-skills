@@ -79,6 +79,35 @@ def suggest(item: dict, rec: dict | None) -> dict:
     return {"price": round(hi + t * (lo - hi), 2), "year": year, "method": "Qty line (log)", "flag": None}
 
 
+def collapse_alternates(items: list[dict], prices: dict) -> list[dict]:
+    """SQ "OR" groups (alt_of) become one line: the alternate with the lowest suggested MDOT price, since the
+    contractor bids only one. The others are named in REMARKS. With no MDOT price for any, the first is kept."""
+    groups, out = {}, []
+    for it in items:
+        key = it.get("alt_of") or it["item"]
+        if key in groups:
+            groups[key].append(it)
+        else:
+            groups[key] = [it]
+            out.append(key)
+    result = []
+    for key in out:
+        g = groups[key]
+        if len(g) == 1:
+            result.append(g[0])
+            continue
+        priced = [(suggest(x, prices.get(x["item"]))["price"], i, x) for i, x in enumerate(g)]
+        withp = [p for p in priced if p[0] is not None]
+        pick = min(withp)[2] if withp else g[0]
+        others = ", ".join(f"{x['item']}" + (f" (${p:,.2f})" if p is not None else " (no MDOT price)")
+                           for p, _, x in priced if x is not pick)
+        chosen = dict(pick)
+        chosen["alt_note"] = (f"SQ alternates (contractor bids one): also {others}; priced the lowest"
+                              if withp else f"SQ alternates (contractor bids one): also {others}")
+        result.append(chosen)
+    return result
+
+
 # ------------------------------------------------------------------ workbook
 THIN = Side(style="thin", color="808080")
 BOX = Border(left=THIN, right=THIN, top=THIN, bottom=THIN)
@@ -193,7 +222,7 @@ def write_sheet(wb, sec, prices, meta, pct_ref):
     flagged = []
     checks = []
     from_prior = []
-    for it in sec["items"]:
+    for it in collapse_alternates(sec["items"], prices):
         code = it["item"]
         rec = prices.get(code)
         s = suggest(it, rec)
@@ -230,6 +259,8 @@ def write_sheet(wb, sec, prices, meta, pct_ref):
                 notes.append(s["flag"])
             if orig is not None:
                 notes.append(f"used original OPCC price ${orig:,.2f}")
+            if it.get("alt_note"):
+                notes.append(it["alt_note"])
             if s.get("note"):
                 notes.append(s["note"])
                 checks.append((code, it["description"], s["note"]))

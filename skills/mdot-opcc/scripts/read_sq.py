@@ -17,6 +17,7 @@ Several project/county column groups are added together (and listed in "projects
 
 Usage: read_sq.py <SQ.pdf|SQ.xlsx> [more SQ files...] [--out sq.json]
 An item whose description ends in "Base Bid" / "Add Option n" goes on that section's sheet.
+"OR" rows mark alternates: the item after "OR" gets "alt_of": <first item of the group> (the contractor bids one).
 """
 from __future__ import annotations
 
@@ -27,6 +28,8 @@ import sys
 from pathlib import Path
 
 ITEM_RE = re.compile(r"^(?:\d{3,4}-)?\d{3,4}-[A-Z]{1,3}\d{3,5}$|^\d{3}-[A-Z]+\d+$")
+# Explicit bid-section labels only: BASE BID, ADD OPTION 1, ADDITIVE ALTERNATE 2, ALTERNATE 3, A1/AO2 ...
+SECTION_RE = re.compile(r"(?i)base\s+bid|(?:add(?:itive)?\s+)?(?:option|alt(?:ernate)?)\s*#?\s*\d+|a(?:o)?\s*-?\s*\d+")
 NUM_RE = re.compile(r"^-?[\d,]+(\.\d+)?$")
 
 
@@ -188,17 +191,28 @@ def read_xlsx(path: str) -> dict:
 def _assemble(path, rows, county, job, projects) -> dict:
     use_final = any(f is not None for r in rows for _, f in r["qtys"])
     sections, cur, warnings = [], None, []
+    pending_or, last_item = False, None
     for r in rows:
         if not r["item"]:
             name = r["description"].strip()
+            if name.upper() == "OR" and not r["unit"]:
+                pending_or = True  # next item is an alternate of the one above (contractor bids one)
+                continue
             if name and not r["unit"] and not any(p or f for p, f in r["qtys"]):
-                cur = {"name": _section_name(name), "items": []}
-                sections.append(cur)
+                if SECTION_RE.fullmatch(" ".join(name.split())):
+                    cur = {"name": _section_name(name), "items": []}
+                    sections.append(cur)
+                else:  # only explicit bid labels start a new sheet; other text rows are notes
+                    warnings.append(f"text row ignored (not a bid section label): {name!r}")
             continue
         if cur is None:
             cur = {"name": "BASE BID", "items": []}
             sections.append(cur)
         target = cur
+        alt_of = None
+        if pending_or and last_item is not None:
+            alt_of = last_item.get("alt_of") or last_item["item"]
+        pending_or = False
         m = re.search(r"\b(Base Bid|Add(?:itive)?\s+(?:Option|Alt(?:ernate)?)\s*#?\s*\d+)\s*$", r["description"], re.I)
         if m:  # e.g. "Sunshade Add Option 3" belongs on that sheet whatever block it sits in
             target = {"name": _section_name(m.group(1)), "items": []}
@@ -210,8 +224,11 @@ def _assemble(path, rows, county, job, projects) -> dict:
             warnings.append(f"{r['item']} ({target['name']}): Final is blank, Prelim is {prelim}")
         if qty is None:
             warnings.append(f"{r['item']} ({target['name']}): no quantity")
-        target["items"].append({"item": r["item"], "description": r["description"], "unit": r["unit"].upper(),
-                             "qty": qty, "prelim": prelim, "final": final, "sheet": r["sheet"]})
+        last_item = {"item": r["item"], "description": r["description"], "unit": r["unit"].upper(),
+                             "qty": qty, "prelim": prelim, "final": final, "sheet": r["sheet"]}
+        if alt_of:
+            last_item["alt_of"] = alt_of
+        target["items"].append(last_item)
     # merge sections split across sheets (same name appearing again)
     merged = {}
     for s in sections:
