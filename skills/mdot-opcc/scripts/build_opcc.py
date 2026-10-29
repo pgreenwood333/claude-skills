@@ -29,12 +29,21 @@ sys.path.insert(0, str(Path(__file__).parent))
 import mdot_bid_prices as mbp  # noqa: E402
 
 PERCENT_ITEMS = {  # pay item -> label used in REMARKS
-    "201-B001": "Clearing and Grubbing",
+    "201-A001": "Clearing and Grubbing (Lump Sum)",
     "907-618-A001": "Maintenance of Traffic",
     "620-A001": "Mobilization",
     "699-A001": "Roadway Construction Stakes",
 }
 DEFAULT_PCT = 0.05
+
+
+def is_percent_item(item: dict) -> bool:
+    """MOT, Mobilization, Construction Stakes, and Clearing & Grubbing ONLY when paid by Lump Sum (201-A001).
+    Clearing & Grubbing by the Acre (201-B001) is priced from MDOT bids like any other item."""
+    if item["item"] in PERCENT_ITEMS:
+        return True
+    unit = item.get("unit", "").upper().replace(".", "")
+    return "clearing and grubbing" in item.get("description", "").lower() and unit in ("LS", "LUMP SUM")
 WIDE_RANGE = 10  # flag when high price > 10x low price
 UNITS = {
     "ACRE": "Acre", "AC": "Acre", "SY": "Square Yard", "LF": "Linear Feet", "CY": "Cubic Yard", "TON": "Ton",
@@ -47,7 +56,7 @@ UNITS = {
 def suggest(item: dict, rec: dict | None) -> dict:
     """Return {'price', 'year', 'method', 'flag'} for one SQ line."""
     code, qty = item["item"], item["qty"]
-    if code in PERCENT_ITEMS:
+    if is_percent_item(item):
         return {"price": None, "year": None, "method": "% of total items cost", "flag": None, "percent": True}
     if not rec or not rec.get("found"):
         return {"price": None, "year": None, "method": "Flagged", "flag": "No MDOT bid price found"}

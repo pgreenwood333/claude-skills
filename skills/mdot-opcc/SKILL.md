@@ -76,10 +76,11 @@ What it writes, one tab per bid section, in the firm's OPCC layout:
   Inflation is 8%/yr from 2020 and 3%/yr before 2020, up to the estimate year. UNIT PRICE = the inflated price.
 - **Columns V–AE:** MDOT bid data used, with the exact MDOT values: search range, price year, min/max/avg
   quantity, low/avg/high price, suggested price before inflation, and the method used.
-- **Percentage items** (Clearing & Grubbing 201-B001, MOT 907-618-A001, Mobilization 620-A001,
-  Construction Stakes 699-A001, and the Contingency row): 5% each, with a dropdown in column I to change it.
+- **Percentage items** (MOT 907-618-A001, Mobilization 620-A001, Construction Stakes 699-A001, Clearing &
+  Grubbing ONLY when paid by Lump Sum (201-A001 / unit LS), and the Contingency row): 5% each, with a dropdown in column I to change it.
   They are a % of TOTAL ITEMS COST (Contingency is a % of SUB-TOTAL). A hidden column M keeps this from
-  becoming a circular reference.
+  becoming a circular reference. Clearing & Grubbing by the Acre (201-B001) is NOT a percentage item: it is priced
+  from MDOT bids like any other item.
 
 Suggested price rules (`suggest()` in `build_opcc.py`):
 - Normal items use a line from (min qty, high price) to (max qty, low price), with quantity on a log scale.
