@@ -10,8 +10,7 @@ widen to Jan 1 of last year -> today, and so on, up to 10 years back. Because th
 nest, an item first found in the range starting Jan 1 of year X was last bid in year X,
 so that range's numbers all come from year X (the "price year").
 
-Usage (first time: choose where downloads are kept):
-  mdot_bid_prices.py set-cache "<folder>"
+Usage:
   mdot_bid_prices.py lookup 203-A002 907-403-A015 [--today 2026-10-29] [--refresh]
   mdot_bid_prices.py lookup --file items.json --out prices.json
   mdot_bid_prices.py range 1/1/2025 12/31/2025 --out bids_2025.xlsx
@@ -32,37 +31,16 @@ import openpyxl
 import requests
 
 URL = "https://aashtoreports.mdot.ms.gov/trnsreportspublic/reports/BidPrices.aspx"
-class MDOTError(RuntimeError):
-    pass
-
-
-SETTINGS = Path.home() / ".config" / "mdot-opcc" / "settings.json"
-
-
-class NoCacheLocation(MDOTError):
-    pass
-
-
-def cache_dir() -> Path:
-    """Where downloaded MDOT price files are kept: MDOT_BID_CACHE if set, else the folder the user chose
-    (saved by `set-cache`). There is no default: the user picks it the first time."""
+def _cache_dir() -> Path:
+    """MDOT_BID_CACHE if set, else the external drive on Peyton's Mac, else ~/.cache (e.g. in Cowork)."""
     if os.environ.get("MDOT_BID_CACHE"):
-        return Path(os.environ["MDOT_BID_CACHE"]).expanduser()
-    try:
-        return Path(json.loads(SETTINGS.read_text())["cache_dir"]).expanduser()
-    except (OSError, ValueError, KeyError):
-        raise NoCacheLocation(
-            "No folder chosen for MDOT price downloads yet. Ask the user where to keep them (any folder they "
-            "like, e.g. a 'MDOT bid prices' folder in their documents), then run: "
-            "mdot_bid_prices.py set-cache \"<folder>\"")
+        return Path(os.environ["MDOT_BID_CACHE"])
+    if Path("/Volumes/PGExtHD").is_dir():
+        return Path("/Volumes/PGExtHD/OPCC/cache")
+    return Path.home() / ".cache" / "mdot-bid-prices"
 
 
-def set_cache(folder: str) -> Path:
-    path = Path(folder).expanduser().resolve()
-    path.mkdir(parents=True, exist_ok=True)
-    SETTINGS.parent.mkdir(parents=True, exist_ok=True)
-    SETTINGS.write_text(json.dumps({"cache_dir": str(path)}, indent=2))
-    return path
+CACHE_DIR = _cache_dir()
 MAX_YEARS_BACK = 10
 FRESH_DAYS = 7  # ranges that end "today" are reused for this many days
 
@@ -73,6 +51,10 @@ _DX = {
     "DXCss": "1_68,1_209,1_206,1_210,1_207,1_254,1_74,1_253,1_73",
 }
 _COLS = ["item", "description", "unit", "min_qty", "low_price", "max_qty", "high_price", "avg_qty", "avg_price"]
+
+
+class MDOTError(RuntimeError):
+    pass
 
 
 def _mdy(d: dt.date) -> str:
@@ -137,12 +119,11 @@ def _read_rows(xlsx: bytes) -> dict:
 
 def _cache_path(start: dt.date, end: dt.date, today: dt.date) -> Path:
     # Ranges ending today are stored by download date so they can be refreshed.
-    return cache_dir() / f"bids_{start:%Y%m%d}_{end:%Y%m%d}.xlsx"
+    return CACHE_DIR / f"bids_{start:%Y%m%d}_{end:%Y%m%d}.xlsx"
 
 
 def get_range(start: dt.date, end: dt.date, refresh: bool = False) -> dict:
     """Items for a date range, using the cache. Returns {'title','items','downloaded','empty'}."""
-    CACHE_DIR = cache_dir()
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     today = dt.date.today()
     open_ended = end >= today - dt.timedelta(days=1)
@@ -215,24 +196,12 @@ def _main():
     lk.add_argument("--out")
     lk.add_argument("--today", help="YYYY-MM-DD (default: today)")
     lk.add_argument("--refresh", action="store_true")
-    sc = sub.add_parser("set-cache", help="choose the folder for downloaded MDOT price files")
-    sc.add_argument("folder")
-    sub.add_parser("where", help="show the chosen folder")
     rg = sub.add_parser("range")
     rg.add_argument("start")
     rg.add_argument("end")
     rg.add_argument("--out", required=True)
     a = ap.parse_args()
 
-    if a.cmd == "set-cache":
-        print(f"MDOT price downloads will be kept in {set_cache(a.folder)}")
-        return
-    if a.cmd == "where":
-        try:
-            print(cache_dir())
-        except NoCacheLocation as e:
-            sys.exit(str(e))
-        return
     if a.cmd == "range":
         p = lambda s: dt.datetime.strptime(s, "%m/%d/%Y").date()
         data = download_range(p(a.start), p(a.end))

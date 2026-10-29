@@ -442,10 +442,7 @@ def main():
     meta = {"project": a.project, "fa": a.fa, "by": a.by.upper(), "county": (a.county or sq.get("county") or "").upper(),
             "today": today, "job_slash": job.replace("-", "/")}
     meta["prior"] = read_prior(a.prior) if a.prior else None
-    try:
-        prices, report = build(sq, meta, a.out, refresh=a.refresh, log=lambda m: print(m, file=sys.stderr))
-    except mbp.MDOTError as e:  # includes "no folder chosen for MDOT downloads yet"
-        sys.exit(str(e))
+    prices, report = build(sq, meta, a.out, refresh=a.refresh, log=lambda m: print(m, file=sys.stderr))
     print(f"Saved {a.out}")
     for sec, (flagged, checks, from_prior) in report.items():
         for code, desc, p in from_prior:
