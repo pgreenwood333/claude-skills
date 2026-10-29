@@ -50,6 +50,14 @@ python3 $S/build_opcc.py opcc_work/sq.json --project "<name>" --fa "<FA no>" --b
     --out "<folder of the SQ>/<job>-<yyyy-mm-dd>-OPCC.xlsx"
 ```
 Add `--refresh` to force fresh MDOT downloads (otherwise ranges ending today are reused for 7 days).
+Add `--prior <earlier OPCC.xlsx>` when the user has an earlier OPCC for the job (ask). For items with no MDOT
+price, its UNIT PRICE is filled in (green cells, year = estimate year so it isn't inflated again), and
+REMARKS keeps "No MDOT bid price found; used original OPCC price $...". Matching is by sheet + pay item +
+description, so duplicate items such as roadway vs bridge Structure Excavation match correctly.
+
+Column widths are sized to fit every shown value (formulas are calculated with `pycel` first) on every build.
+Header labels sit in merged cells so nothing spills over. Excel can't widen columns by itself without a
+macro, so a much bigger number typed in later may show `####` until the column is widened.
 
 What it writes, one tab per bid section, in the firm's OPCC layout:
 - **Columns C–I and L:** PAY ITEM NO., PAY ITEM, UNIT, QTY, UNIT PRICE, TOTAL, % OF ITEMS, then a blank

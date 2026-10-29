@@ -85,11 +85,64 @@ BOX = Border(left=THIN, right=THIN, top=THIN, bottom=THIN)
 BOLD = Font(bold=True)
 HEAD_FILL = PatternFill("solid", fgColor="D9D9D9")
 INPUT_FILL = PatternFill("solid", fgColor="FFF2CC")   # cells the engineer is expected to fill
+PRIOR_FILL = PatternFill("solid", fgColor="E2EFDA")   # price carried over from the original OPCC
 DATA_FILL = PatternFill("solid", fgColor="EDF2F8")    # MDOT data block
 MONEY = '"$"#,##0.00'
 MONEY0 = '"$"#,##0'
 QTYF = '#,##0.##'
 CENTER = Alignment(horizontal="center", vertical="center", wrap_text=True)
+
+
+def read_prior(path: str) -> dict:
+    """Unit prices from an earlier OPCC: {sheet name upper: [(item, description, unit price)]}."""
+    import openpyxl
+    wb = openpyxl.load_workbook(path, data_only=True)
+    out = {}
+    for ws in wb.worksheets:
+        hdr = None
+        for row in ws.iter_rows(min_row=1, max_row=15):
+            for c in row:
+                if str(c.value or "").strip().upper() == "PAY ITEM NO.":
+                    hdr = (c.row, c.column)
+                    break
+            if hdr:
+                break
+        if not hdr:
+            continue
+        hrow = [str(ws.cell(hdr[0], c).value or "").strip().upper() for c in range(1, ws.max_column + 1)]
+        c_item = hdr[1]
+        c_desc = hrow.index("PAY ITEM") + 1 if "PAY ITEM" in hrow else c_item + 1
+        c_price = hrow.index("UNIT PRICE") + 1 if "UNIT PRICE" in hrow else None
+        if not c_price:
+            continue
+        rows = []
+        for r in range(hdr[0] + 1, ws.max_row + 1):
+            item = str(ws.cell(r, c_item).value or "").strip().upper()
+            price = ws.cell(r, c_price).value
+            if item and isinstance(price, (int, float)):
+                rows.append((item, str(ws.cell(r, c_desc).value or "").strip(), float(price)))
+        out[ws.title.strip().upper()] = rows
+    return out
+
+
+def _norm(t: str) -> str:
+    return " ".join(str(t).lower().replace("concrete curb", "curb").split())
+
+
+def prior_price(prior: dict, sheet: str, item: str, desc: str):
+    """Best match: same sheet + item + description, then same sheet + item, then any sheet + item + description."""
+    if not prior:
+        return None
+    same = prior.get(sheet.upper(), [])
+    for pool in (same, [x for v in prior.values() for x in v]):
+        hits = [p for i, d, p in pool if i == item and _norm(d) == _norm(desc)]
+        if hits:
+            return hits[0]
+        if pool is same:
+            hits = [p for i, d, p in pool if i == item]
+            if len(set(hits)) == 1:
+                return hits[0]
+    return None
 
 
 def write_sheet(wb, sec, prices, meta, pct_ref):
@@ -125,12 +178,21 @@ def write_sheet(wb, sec, prices, meta, pct_ref):
         for col in list(range(3, 10)) + [12] + list(range(14, 18)) + list(range(22, 32)):
             c = ws.cell(row, col); c.font = BOLD; c.alignment = CENTER; c.fill = HEAD_FILL; c.border = BOX
     ws.merge_cells("N5:O5")
+    # header labels get merged cells so nothing spills into the next column
+    for rng in ("E2:F2", "E3:F3", "E4:F4"):
+        ws.merge_cells(rng); ws[rng.split(":")[0]].alignment = Alignment(horizontal="right")
+    for rng in ("N3:Q3", "S4:T4", "V4:AE4"):
+        ws.merge_cells(rng); ws[rng.split(":")[0]].alignment = Alignment(horizontal="center")
+    ws.merge_cells("V3:AE3"); ws["V3"].alignment = Alignment(wrap_text=True, vertical="top")
+    ws.row_dimensions[3].height = 26
+    ws.row_dimensions[5].height = 45
 
     first = 7
     r = first
     pct_rows = []
     flagged = []
     checks = []
+    from_prior = []
     for it in sec["items"]:
         code = it["item"]
         rec = prices.get(code)
@@ -144,8 +206,16 @@ def write_sheet(wb, sec, prices, meta, pct_ref):
             ws[f"G{r}"] = f"=IF(F{r}>0,H{r}/F{r},H{r})"
             ws[f"L{r}"] = f'=TEXT(I{r},"0%")&" OF TOTAL ITEMS COST"'
         else:
+            orig = None
+            if s["price"] is None and s["flag"] == "No MDOT bid price found":
+                orig = prior_price(meta.get("prior"), sec["name"], code, it["description"])
             if s["price"] is not None:
                 ws[f"N{r}"], ws[f"O{r}"] = s["year"], s["price"]
+            elif orig is not None:
+                # original OPCC unit price, already in estimate-year dollars, so no extra inflation
+                ws[f"N{r}"], ws[f"O{r}"] = est_year, round(orig, 2)
+                ws[f"N{r}"].fill = ws[f"O{r}"].fill = PRIOR_FILL
+                from_prior.append((code, it["description"], orig))
             else:
                 ws[f"N{r}"].fill = ws[f"O{r}"].fill = INPUT_FILL
                 flagged.append((code, it["description"], s["flag"]))
@@ -158,6 +228,8 @@ def write_sheet(wb, sec, prices, meta, pct_ref):
             notes = []
             if s["flag"]:
                 notes.append(s["flag"])
+            if orig is not None:
+                notes.append(f"used original OPCC price ${orig:,.2f}")
             if s.get("note"):
                 notes.append(s["note"])
                 checks.append((code, it["description"], s["note"]))
@@ -172,6 +244,8 @@ def write_sheet(wb, sec, prices, meta, pct_ref):
         else:
             vals = [rec["range"] if rec else None, None, None, None, None, None, None, None, None,
                     s["method"] if s.get("percent") else "No MDOT bid price found"]
+            if not s.get("percent") and orig is not None:
+                vals[-1] = "No MDOT bid price -> original OPCC price"
         if s.get("percent") and rec and rec.get("found"):
             vals[-1] = "% of total items cost (MDOT data for reference only)"
         for i, v in enumerate(vals):
@@ -219,9 +293,9 @@ def write_sheet(wb, sec, prices, meta, pct_ref):
         ws[f"Q{rr}"].number_format = MONEY
         ws[f"E{rr}"].alignment = Alignment(horizontal="center")
     # J:K are a blank gap; M is the hidden helper column
-    widths = {"A": 2, "B": 2, "C": 15, "D": 48, "E": 7, "F": 10, "G": 13, "H": 15, "I": 9, "J": 9, "K": 9,
-              "L": 40, "M": 2, "N": 8, "O": 13, "P": 12, "Q": 12, "R": 2, "S": 15, "T": 7, "U": 3, "V": 23,
-              "W": 8, "X": 10, "Y": 10, "Z": 10, "AA": 12, "AB": 12, "AC": 13, "AD": 14, "AE": 34}
+    widths = {"A": 2, "B": 2, "C": 15, "D": 48, "E": 7, "F": 10, "G": 16, "H": 17, "I": 9, "J": 9, "K": 9,
+              "L": 40, "M": 2, "N": 8, "O": 16, "P": 16, "Q": 16, "R": 2, "S": 15, "T": 7, "U": 3, "V": 23,
+              "W": 8, "X": 10, "Y": 10, "Z": 10, "AA": 16, "AB": 16, "AC": 16, "AD": 16, "AE": 34}
     for k, v in widths.items():
         ws.column_dimensions[k].width = v
     ws.freeze_panes = "E7"
@@ -229,7 +303,7 @@ def write_sheet(wb, sec, prices, meta, pct_ref):
     ws.page_setup.orientation = "landscape"; ws.page_setup.fitToWidth = 1; ws.page_setup.fitToHeight = 0
     ws.sheet_properties.pageSetUpPr.fitToPage = True
     ws.print_area = f"C1:L{tot}"
-    return flagged, checks
+    return flagged, checks, from_prior
 
 
 def build(sq: dict, meta: dict, out: str, refresh=False, log=print):
@@ -248,7 +322,75 @@ def build(sq: dict, meta: dict, out: str, refresh=False, log=print):
     wb.move_sheet("Lists", offset=len(wb.sheetnames))
     wb.active = 0
     wb.save(out)
+    autofit(out)
     return prices, report
+
+
+def _display(v, fmt: str) -> str:
+    """Roughly what Excel shows for a value with this number format."""
+    if v is None or v == "":
+        return ""
+    if isinstance(v, (dt.date, dt.datetime)):
+        return f"{v.month}/{v.day}/{v.year}"
+    if isinstance(v, bool):
+        return str(v).upper()
+    if isinstance(v, (int, float)):
+        if "%" in fmt:
+            return f"{v * 100:.0f}%"
+        if "$" in fmt:
+            return f"${v:,.2f}" if ".00" in fmt else f"${v:,.0f}"
+        if "#,##0" in fmt:
+            return f"{v:,.2f}".rstrip("0").rstrip(".")
+        return f"{v:,}" if isinstance(v, int) else f"{v:,.2f}"
+    return str(v)
+
+
+def autofit(path: str, spare: int = 2, max_width: int = 110):
+    """Size every column to its widest shown value (formulas are calculated first), plus a little spare room.
+
+    Excel won't widen columns by itself without a macro, so this runs every time the workbook is built.
+    Formula results come from pycel when it is installed; otherwise formula cells get a safe default width."""
+    from openpyxl import load_workbook
+    wb = load_workbook(path)
+    xl = None
+    try:
+        import ast
+        if not hasattr(ast, "Str"):  # pycel on Python 3.12+
+            ast.Str = lambda s=None, **k: ast.Constant(s)
+        from pycel import ExcelCompiler
+        xl = ExcelCompiler(filename=path)
+    except Exception:
+        xl = None
+    for ws in wb.worksheets:
+        if ws.sheet_state != "visible":
+            continue
+        merged = {c for rng in ws.merged_cells.ranges for row in ws[rng.coord] for c in [x.coordinate for x in row]}
+        widths = {}
+        for row in ws.iter_rows():
+            for c in row:
+                if c.value is None or c.coordinate in merged:
+                    continue
+                v = c.value
+                if isinstance(v, str) and v.startswith("="):
+                    if xl is None:
+                        v = 1234567.89 if "$" in c.number_format else "x" * 12
+                    else:
+                        try:
+                            v = xl.evaluate(f"'{ws.title}'!{c.coordinate}")
+                        except Exception:
+                            v = "x" * 12
+                text = _display(v, c.number_format)
+                if c.alignment is not None and c.alignment.wrap_text:
+                    text = max(text.split(), key=len, default="")  # wrapped: longest word must fit
+                size = (c.font.sz or 11) if c.font is not None else 11
+                n = len(text) * (1.15 if c.font is not None and c.font.b else 1.0) * size / 11
+                widths[c.column_letter] = max(widths.get(c.column_letter, 0), n)
+        for col, n in widths.items():
+            d = ws.column_dimensions[col]
+            if d.hidden:
+                continue
+            d.width = min(max_width, max(n + spare, d.width or 0, 6))
+    wb.save(path)
 
 
 def main():
@@ -261,15 +403,19 @@ def main():
     ap.add_argument("--out", required=True)
     ap.add_argument("--today")
     ap.add_argument("--refresh", action="store_true")
+    ap.add_argument("--prior", help="earlier OPCC .xlsx: its unit price is used where MDOT has no price")
     a = ap.parse_args()
     sq = json.loads(Path(a.sq_json).read_text())
     today = dt.date.fromisoformat(a.today) if a.today else dt.date.today()
     job = sq.get("job") or ""
     meta = {"project": a.project, "fa": a.fa, "by": a.by.upper(), "county": (a.county or sq.get("county") or "").upper(),
             "today": today, "job_slash": job.replace("-", "/")}
+    meta["prior"] = read_prior(a.prior) if a.prior else None
     prices, report = build(sq, meta, a.out, refresh=a.refresh, log=lambda m: print(m, file=sys.stderr))
     print(f"Saved {a.out}")
-    for sec, (flagged, checks) in report.items():
+    for sec, (flagged, checks, from_prior) in report.items():
+        for code, desc, p in from_prior:
+            print(f"PRIOR {sec:14} {code:15} {desc[:45]:45} original OPCC ${p:,.2f}")
         for code, desc, why in flagged:
             print(f"BLANK {sec:14} {code:15} {desc[:45]:45} {why}")
         for code, desc, why in checks:
