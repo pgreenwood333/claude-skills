@@ -88,12 +88,12 @@ def suggest(item: dict, rec: dict | None) -> dict:
     return {"price": round(hi + t * (lo - hi), 2), "year": year, "method": "Qty line (log)", "flag": None}
 
 
-def collapse_alternates(items: list[dict], prices: dict) -> list[dict]:
-    """SQ "OR" groups (alt_of) become one line: the alternate with the lowest suggested MDOT price, since the
-    contractor bids only one. The others are named in REMARKS. With no MDOT price for any, the first is kept."""
-    # Group ONLY lines joined by an SQ "OR" row: an alternate (alt_of set) attaches to the line right before it
-    # when that line is the group's first item. Repeated pay items without "OR" (e.g. roadway and bridge
-    # Structure Excavation, or several Lighting Assembly types) stay as separate lines and are all counted.
+def mark_alternates(items: list[dict], prices: dict) -> list[dict]:
+    """SQ "OR" groups (alt_of) stay as separate lines, each with its own MDOT price, like the firm's OPCC sheet:
+    every alternate is listed, only ONE is counted in the totals (the contractor bids one). The one counted at
+    first is the lowest suggested MDOT price (or the first listed if none has a price); a YES/NO dropdown on each
+    alternate row lets the engineer switch it. Repeated pay items WITHOUT an "OR" row (e.g. roadway and bridge
+    Structure Excavation) are not alternates: they stay separate and are all counted."""
     grouped = []
     for it in items:
         if it.get("alt_of") and grouped and grouped[-1][0]["item"] == it["alt_of"]:
@@ -103,36 +103,39 @@ def collapse_alternates(items: list[dict], prices: dict) -> list[dict]:
     result = []
     for g in grouped:
         if len(g) == 1:
-            result.append(g[0])
+            result.append(dict(g[0]))
             continue
         priced = [(suggest(x, prices.get(x["item"]))["price"], i, x) for i, x in enumerate(g)]
         withp = [p for p in priced if p[0] is not None]
-        pick = min(withp)[2] if withp else g[0]
-        others = ", ".join(f"{x['item']}" + (f" (${p:,.2f})" if p is not None else " (no MDOT price)")
-                           for p, _, x in priced if x is not pick)
-        chosen = dict(pick)
-        chosen["alt_note"] = (f"SQ alternates (contractor bids one): also {others}; priced the lowest"
-                              if withp else f"SQ alternates (contractor bids one): also {others}")
-        result.append(chosen)
+        pick = (min(withp)[1] if withp else 0)
+        codes = ", ".join(x["item"] for x in g)
+        for i, x in enumerate(g):
+            y = dict(x)
+            y["alt_group"] = codes
+            y["alt_counted"] = i == pick
+            y["alt_note"] = (f"ALTERNATE ({codes}; contractor bids one): only the row marked YES counts in the "
+                             f"total" + ("; YES set on the lowest MDOT price" if withp and i == pick else ""))
+            result.append(y)
     return result
 
 
 def check_lines(sec: dict, lines: list[dict]):
-    """Safety check: every SQ line must reach the OPCC except the extra alternates of an "OR" group.
-    Repeated pay items are compared by their summed quantity so nothing can silently drop out."""
+    """Safety check: every SQ line must reach the OPCC (alternates included), with the same quantity per pay item,
+    and each "OR" group must have exactly one alternate counted. Nothing can silently drop out or double count."""
     from collections import Counter
-    n_alt = sum(1 for it in sec["items"] if it.get("alt_of"))
-    want = Counter()
+    want, got = Counter(), Counter()
     for it in sec["items"]:
-        if not it.get("alt_of"):
-            want[it["item"]] += it["qty"] or 0
-    got = Counter()
+        want[it["item"]] += it["qty"] or 0
     for it in lines:
-        got[it.get("alt_of") or it["item"]] += it["qty"] or 0
-    if len(lines) != len(sec["items"]) - n_alt or want != got:
+        got[it["item"]] += it["qty"] or 0
+    groups = Counter(it["alt_group"] for it in lines if it.get("alt_group") and it.get("alt_counted"))
+    allg = {it["alt_group"] for it in lines if it.get("alt_group")}
+    bad_groups = [g for g in allg if groups.get(g, 0) != 1]
+    if len(lines) != len(sec["items"]) or want != got or bad_groups:
         missing = {k: (want[k], got.get(k, 0)) for k in set(want) | set(got) if want[k] != got.get(k, 0)}
         raise RuntimeError(f"{sec['name']}: OPCC lines don't match the SQ (SQ {len(sec['items'])} lines, "
-                           f"{n_alt} alternates, OPCC {len(lines)} lines; qty SQ vs OPCC: {missing}). Not saved.")
+                           f"OPCC {len(lines)} lines; qty SQ vs OPCC: {missing}; alternate groups without exactly "
+                           f"one counted: {bad_groups}). Not saved.")
 
 
 # ------------------------------------------------------------------ workbook
@@ -214,7 +217,7 @@ def write_sheet(wb, sec, prices, meta, pct_ref):
     ws["E4"] = "TOTAL ITEMS COST:"
     ws["S4"] = "UNIT PRICE INFLATION"
     heads = {"C": "PAY ITEM NO.", "D": "PAY ITEM", "E": "UNIT", "F": "QTY", "G": "UNIT PRICE", "H": "TOTAL",
-             "I": "% OF ITEMS", "L": "REMARKS", "N": "INFLATION", "P": "COST IN YR", "Q": "ESTIMATE YR",
+             "I": "% OF ITEMS / ALT. COUNTED", "L": "REMARKS", "N": "INFLATION", "P": "COST IN YR", "Q": "ESTIMATE YR",
              "S": "2020 - 2025 @", "T": 0.08}
     for c, v in heads.items():
         ws[f"{c}5"] = v
@@ -246,10 +249,11 @@ def write_sheet(wb, sec, prices, meta, pct_ref):
     first = 7
     r = first
     pct_rows = []
+    alt_rows = []
     flagged = []
     checks = []
     from_prior = []
-    lines = collapse_alternates(sec["items"], prices)
+    lines = mark_alternates(sec["items"], prices)
     check_lines(sec, lines)
     for it in lines:
         code = it["item"]
@@ -282,7 +286,15 @@ def write_sheet(wb, sec, prices, meta, pct_ref):
                            f'O{r}*(1+$T$5)^($Q$6-N{r})),2))')
             ws[f"G{r}"] = f'=IF(Q{r}="","",Q{r})'
             ws[f"H{r}"] = f'=IF(G{r}="","",F{r}*G{r})'
-            ws[f"M{r}"] = f"=N(H{r})"  # hidden helper: items cost without the % rows (avoids a circular ref)
+            if it.get("alt_group"):
+                # alternate: YES/NO in column I says whether this row counts in the totals
+                ws[f"I{r}"] = "YES" if it["alt_counted"] else "NO"
+                ws[f"I{r}"].fill = INPUT_FILL
+                ws[f"I{r}"].alignment = Alignment(horizontal="center")
+                alt_rows.append(r)
+                ws[f"M{r}"] = f'=IF(I{r}="YES",N(H{r}),0)'
+            else:
+                ws[f"M{r}"] = f"=N(H{r})"  # hidden helper: items cost without the % rows (avoids a circular ref)
             notes = []
             if s["flag"]:
                 notes.append(s["flag"])
@@ -324,7 +336,8 @@ def write_sheet(wb, sec, prices, meta, pct_ref):
     ws.column_dimensions["M"].hidden = True
     ws["G4"].number_format = MONEY0; ws["G4"].font = BOLD
     sub, cont, tot = r + 1, r + 3, r + 5
-    ws[f"C{sub}"] = "SUB-TOTAL"; ws[f"H{sub}"] = f"=SUM(H{first}:H{last})"
+    # SUB-TOTAL = counted pay items (G4, which leaves out alternates marked NO) + the % items
+    ws[f"C{sub}"] = "SUB-TOTAL"; ws[f"H{sub}"] = f'=G4+SUMIF(I{first}:I{last},">0",H{first}:H{last})'
     ws[f"D{cont}"] = "Contingencies"; ws[f"E{cont}"] = "LS"; ws[f"F{cont}"] = 1
     ws[f"I{cont}"] = DEFAULT_PCT; ws[f"I{cont}"].number_format = "0%"; ws[f"I{cont}"].fill = INPUT_FILL
     ws[f"H{cont}"] = f"=ROUNDUP(I{cont}*H{sub},0)"; ws[f"G{cont}"] = f"=H{cont}"
@@ -342,6 +355,18 @@ def write_sheet(wb, sec, prices, meta, pct_ref):
     ws.add_data_validation(dv)
     for rr in pct_rows + [cont]:
         dv.add(f"I{rr}")
+    if alt_rows:
+        dva = DataValidation(type="list", formula1='"YES,NO"', allow_blank=False,
+                             prompt="Alternates: the contractor bids one. Mark exactly one row in this group YES.",
+                             promptTitle="Count this alternate?", showInputMessage=True, showErrorMessage=True)
+        ws.add_data_validation(dva)
+        for rr in alt_rows:
+            dva.add(f"I{rr}")
+        # rows marked NO show grey so it's clear they aren't in the total
+        from openpyxl.formatting.rule import FormulaRule
+        for rr in alt_rows:
+            ws.conditional_formatting.add(f"C{rr}:H{rr}", FormulaRule(formula=[f'$I${rr}="NO"'],
+                                          font=Font(color="808080", italic=True)))
 
     # formats
     for rr in range(first, last + 1):

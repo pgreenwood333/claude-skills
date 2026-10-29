@@ -44,8 +44,10 @@ Pass every SQ sheet set (roadway, bridge, ...); same-named sections are combined
 SQ (SQ-BR sheets) if the job has a bridge and only the roadway SQ was given.
 Everything is Base Bid unless the SQ has an explicit label row ("BASE BID", "ADD OPTION 1", "A1"/"A2" → ADD OPTION
 1/2, "ADDITIVE ALTERNATE 2"); any other text-only row is ignored with a warning. "OR" rows mark alternates (e.g.
-304-F001 OR 304-F002 OR 304-F003, same quantity): the OPCC gets ONE line for the group, priced with the alternate
-whose suggested MDOT price is lowest, and REMARKS names the others with their prices.
+304-F001 OR 304-F002 OR 304-F003, same quantity). Like the firm's OPCC sheet, EVERY alternate gets its own row
+with its own MDOT price, but only ONE counts in the totals (the contractor bids one). Column I on alternate rows
+holds a YES/NO dropdown: YES starts on the lowest suggested MDOT price; rows marked NO show grey and are left out
+of TOTAL ITEMS COST, the % items and the SUB-TOTAL. The engineer switches it by moving the YES.
 It skips note bubbles and notes
 below the table. An item whose description ends in "Base Bid" or "Add Option n" (e.g. "Sunshade Add Option 3")
 goes on that sheet. The same pay item on both sheets (e.g. roadway and bridge Structure Excavation) stays as
