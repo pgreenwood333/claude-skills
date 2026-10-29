@@ -21,6 +21,7 @@ import argparse
 import datetime as dt
 import io
 import json
+import math
 import os
 import re
 import sys
@@ -42,6 +43,10 @@ def _cache_dir() -> Path:
 
 CACHE_DIR = _cache_dir()
 MAX_YEARS_BACK = 10
+# Hosted price API (Cloudflare Worker, refreshed monthly from MDOT by GitHub Actions). Same search rules and
+# one-project guardrail as below, answered in about a second with no download. Set MDOT_PRICE_API="" to always
+# download straight from MDOT instead.
+API_URL = os.environ.get("MDOT_PRICE_API", "https://mdot-bid-prices.pgreenwood333.workers.dev")
 FRESH_DAYS = 7  # ranges that end "today" are reused for this many days
 
 # DevExpress asks for these on every postback (copied from the live page).
@@ -154,9 +159,34 @@ def _load_cached(path: Path, start: dt.date, end: dt.date) -> dict:
     return {**rows, "start": start, "end": end, "downloaded": downloaded, "empty": False}
 
 
+def lookup_api(items: list[str], log=lambda m: None) -> dict:
+    """Prices from the hosted API (search rules + one-project guardrail already applied)."""
+    wanted = list(dict.fromkeys(i.strip().upper() for i in items if i and i.strip()))
+    out = {}
+    for k in range(0, len(wanted), 500):
+        r = requests.post(API_URL.rstrip("/") + "/lookup", json={"items": wanted[k:k + 500]}, timeout=60)
+        r.raise_for_status()
+        body = r.json()
+        for code, rec in body["results"].items():
+            rec["api"] = True
+            if rec.get("found"):
+                rec.setdefault("downloaded", body["downloaded"][:10])
+            out[code] = rec
+    log(f"Prices from the MDOT price API (data through {body.get('data_through')}, refreshed "
+        f"{body.get('downloaded', '')[:10]})")
+    return out
+
+
 def lookup(items: list[str], today: dt.date | None = None, refresh: bool = False,
            years_back: int = MAX_YEARS_BACK, log=lambda m: None) -> dict:
-    """Apply the widening date-range rule to each pay item. Returns {item: result}."""
+    """Apply the widening date-range rule to each pay item. Returns {item: result}.
+    Uses the hosted API when available (unless refresh=True or a past/future `today` is given); otherwise, or if
+    the API can't be reached, downloads straight from MDOT."""
+    if API_URL and not refresh and (today is None or today == dt.date.today()):
+        try:
+            return lookup_api(items, log=log)
+        except (requests.RequestException, ValueError, KeyError) as e:
+            log(f"Price API not reachable ({e}); downloading straight from MDOT instead")
     today = today or dt.date.today()
     wanted = [i.strip().upper() for i in items if i and i.strip()]
     out = {}
@@ -187,6 +217,12 @@ def lookup(items: list[str], today: dt.date | None = None, refresh: bool = False
     return out
 
 
+def _r2(v: float) -> float:
+    """Round to cents, half up (matches the price API's JavaScript Math.round; Python's round() rounds half
+    to even)."""
+    return math.floor(v * 100 + 0.5) / 100
+
+
 def inflate(price: float, year: int, to_year: int, rate: float = 0.08, old_rate: float = 0.03,
             base: int = 2020) -> float:
     """Same inflation as the OPCC sheet: old_rate/yr up to `base`, then rate/yr up to `to_year`."""
@@ -205,7 +241,8 @@ def widen_single_project(prices: dict, today: dt.date | None = None, years_back:
     If ten years still show one project, the item is kept as found and marked single_project=True."""
     today = today or dt.date.today()
     oldest = today.year - years_back + 1
-    single = [k for k, r in prices.items() if r.get("found") and r["min_qty"] == r["max_qty"]]
+    single = [k for k, r in prices.items()
+              if r.get("found") and r["min_qty"] == r["max_qty"] and not r.get("api")]  # API already applied it
     if not single:
         return prices
     log(f"{len(single)} item(s) have bids from only one project; checking earlier years one at a time")
@@ -231,14 +268,14 @@ def widen_single_project(prices: dict, today: dt.date | None = None, years_back:
             out[code] = {**rec, "single_project": True}
             continue
         yrs = sorted(recs)
-        f = lambda v, yr: round(inflate(v, yr, today.year, **rates), 2)
+        f = lambda v, yr: _r2(inflate(v, yr, today.year, **rates))
         out[code] = {**rec,
                      "min_qty": min(x["min_qty"] for x in recs.values()),
                      "max_qty": max(x["max_qty"] for x in recs.values()),
-                     "avg_qty": round(sum(x["avg_qty"] for x in recs.values()) / len(recs), 2),
+                     "avg_qty": _r2(sum(x["avg_qty"] for x in recs.values()) / len(recs)),
                      "low_price": min(f(x["low_price"], yr) for yr, x in recs.items()),
                      "high_price": max(f(x["high_price"], yr) for yr, x in recs.items()),
-                     "avg_price": round(sum(f(x["avg_price"], yr) for yr, x in recs.items()) / len(recs), 2),
+                     "avg_price": _r2(sum(f(x["avg_price"], yr) for yr, x in recs.items()) / len(recs)),
                      "price_year": today.year, "inflated": True, "years_used": yrs,
                      "range": f"{yrs[0]}-{yrs[-1]} by year ({', '.join(str(v) for v in yrs)}), "
                               f"inflated to {today.year}",

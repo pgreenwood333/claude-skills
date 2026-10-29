@@ -13,6 +13,16 @@ never make up prices.
 MDOT downloads are cached in `/Volumes/PGExtHD/OPCC/cache/` when that drive is present, otherwise in
 `~/.cache/mdot-bid-prices` (set `MDOT_BID_CACHE` to choose).
 
+## Where prices come from
+
+Prices come from the **MDOT price API** (`https://mdot-bid-prices.pgreenwood333.workers.dev`, a Cloudflare Worker).
+GitHub Actions downloads MDOT's Item Bid Prices report on the 1st of each month (repo
+`pgreenwood333/mdot-bid-prices`, private) and the API answers lookups in about a second with the same search rules
+and one-project guardrail as below. If the API can't be reached, the scripts download straight from MDOT instead
+(slower, same results). `MDOT_PRICE_API=""` forces the direct download; `--refresh` also bypasses the API.
+The API's data can be up to a month old; for a big estimate the monthly job can be run on demand from GitHub
+(Actions -> Refresh MDOT bid prices -> Run workflow).
+
 ## Price lookup on its own
 
 `python3 $S/mdot_bid_prices.py lookup 203-A002 907-403-A015 ...` prints, for each pay item: the date range
