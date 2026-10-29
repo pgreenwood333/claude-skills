@@ -82,17 +82,17 @@ def suggest(item: dict, rec: dict | None) -> dict:
 def collapse_alternates(items: list[dict], prices: dict) -> list[dict]:
     """SQ "OR" groups (alt_of) become one line: the alternate with the lowest suggested MDOT price, since the
     contractor bids only one. The others are named in REMARKS. With no MDOT price for any, the first is kept."""
-    groups, out = {}, []
+    # Group ONLY lines joined by an SQ "OR" row: an alternate (alt_of set) attaches to the line right before it
+    # when that line is the group's first item. Repeated pay items without "OR" (e.g. roadway and bridge
+    # Structure Excavation, or several Lighting Assembly types) stay as separate lines and are all counted.
+    grouped = []
     for it in items:
-        key = it.get("alt_of") or it["item"]
-        if key in groups:
-            groups[key].append(it)
+        if it.get("alt_of") and grouped and grouped[-1][0]["item"] == it["alt_of"]:
+            grouped[-1].append(it)
         else:
-            groups[key] = [it]
-            out.append(key)
+            grouped.append([it])
     result = []
-    for key in out:
-        g = groups[key]
+    for g in grouped:
         if len(g) == 1:
             result.append(g[0])
             continue
@@ -106,6 +106,24 @@ def collapse_alternates(items: list[dict], prices: dict) -> list[dict]:
                               if withp else f"SQ alternates (contractor bids one): also {others}")
         result.append(chosen)
     return result
+
+
+def check_lines(sec: dict, lines: list[dict]):
+    """Safety check: every SQ line must reach the OPCC except the extra alternates of an "OR" group.
+    Repeated pay items are compared by their summed quantity so nothing can silently drop out."""
+    from collections import Counter
+    n_alt = sum(1 for it in sec["items"] if it.get("alt_of"))
+    want = Counter()
+    for it in sec["items"]:
+        if not it.get("alt_of"):
+            want[it["item"]] += it["qty"] or 0
+    got = Counter()
+    for it in lines:
+        got[it.get("alt_of") or it["item"]] += it["qty"] or 0
+    if len(lines) != len(sec["items"]) - n_alt or want != got:
+        missing = {k: (want[k], got.get(k, 0)) for k in set(want) | set(got) if want[k] != got.get(k, 0)}
+        raise RuntimeError(f"{sec['name']}: OPCC lines don't match the SQ (SQ {len(sec['items'])} lines, "
+                           f"{n_alt} alternates, OPCC {len(lines)} lines; qty SQ vs OPCC: {missing}). Not saved.")
 
 
 # ------------------------------------------------------------------ workbook
@@ -222,7 +240,9 @@ def write_sheet(wb, sec, prices, meta, pct_ref):
     flagged = []
     checks = []
     from_prior = []
-    for it in collapse_alternates(sec["items"], prices):
+    lines = collapse_alternates(sec["items"], prices)
+    check_lines(sec, lines)
+    for it in lines:
         code = it["item"]
         rec = prices.get(code)
         s = suggest(it, rec)
