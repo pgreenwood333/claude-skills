@@ -6,6 +6,7 @@
 Tabs: Summary (counts), then one tab per check that ran:
   Spelling          Sheet ID | PDF Page | Text Found | Correct To | Status | Notes
   Placeholders (XX) unfilled XX values pulled out of spelling, same columns as the other checks
+  Note Match        Sheet ID | PDF Page | What's Wrong | What Doesn't Match | Fix | Priority | Status
   every other check Sheet ID | PDF Page | What's Wrong | Fix | Priority | Status
 plus "Your Call" (flags the engineer decides) and "Rejected" (dismissed on review, kept for the record).
 A flag that covers several sheets gets one row per sheet, like a punch list. Rows sort by sheet order.
@@ -40,6 +41,24 @@ def rows_for(f, sid_by_page):
             seen.add(p)
             out.append((sid_by_page.get(p, ""), p))
     return out or [(", ".join(f.get("sheet_ids", [])), "")]
+
+
+def mismatch(evidence, n=500):
+    """Note Match: the two sides that disagree, one per line ("Profile: W = 3'0\"" / "XS: W = 4'0\"")."""
+    m = re.search(r"no matching note on any cross-section sheet:\s*(.+)", evidence or "", re.I)
+    if m or re.search(r"no cross-section note", evidence or "", re.I):
+        items = m.group(1).replace("`", "").strip() if m else ""
+        return (f"Profile: {items}\n" if items else "") + "XS: cross-section note not found"
+    out = []
+    for pair in re.split(r";\s+(?=(?:profile|plan|XS)\b)", evidence or "", flags=re.I):
+        for side in re.split(r"\s+vs\.?\s+", pair):
+            side = side.replace("`", "").strip(" ;")
+            side = re.sub(r"^(profile|plan|xs)\b", lambda m: {"profile": "Profile", "plan": "Plan", "xs": "XS"}[m.group(1).lower()],
+                          side, flags=re.I)
+            if side:
+                out.append(side)
+    text = "\n".join(out)
+    return text if len(text) <= n else text[:n - 1].rstrip() + "…"
 
 
 def short(text, n=220):
@@ -111,12 +130,19 @@ def main():
                 if t == "spelling":
                     rows.append([sid, pg, quotes[0] if quotes else short(f.get("evidence"), 80),
                                  short(f.get("suggested_fix"), 120), status(f), short(f.get("finding"), 160)])
+                elif t == "notematch":
+                    rows.append([sid, pg, short(f.get("finding")), mismatch(f.get("evidence")),
+                                 short(f.get("suggested_fix"), 160), pri, status(f)])
                 else:
                     rows.append([sid, pg, short(f.get("finding")), short(f.get("suggested_fix"), 160), pri, status(f)])
         if t == "spelling":
             rows.sort(key=lambda r: (r[1] if isinstance(r[1], int) else 9999))
             table(wb, name, ["Sheet ID", "PDF Page", "Text Found", "Correct To", "Status", "Notes"], rows,
                   [12, 9, 34, 34, 12, 60])
+        elif t == "notematch":
+            rows.sort(key=lambda r: (order.get(r[5], 3), r[1] if isinstance(r[1], int) else 9999))
+            table(wb, name, ["Sheet ID", "PDF Page", "What's Wrong", "What Doesn't Match", "Fix", "Priority", "Status"],
+                  rows, [12, 9, 60, 55, 40, 10, 12])
         else:
             rows.sort(key=lambda r: (order.get(r[4], 3), r[1] if isinstance(r[1], int) else 9999))
             table(wb, name, ["Sheet ID", "PDF Page", "What's Wrong", "Fix", "Priority", "Status"], rows,

@@ -12,7 +12,7 @@ The engineer's rules:
    `--xs-pages` if the index typed them differently; check the counts it prints.)
    The profile notes come from the same extraction as the profile-notes-extractor skill, which reproduced an
    approved 103-note document exactly. Pipe labels are searched on the sheet, its LT/RT partner, every sheet
-   showing the same structure label and the two sheets either side (pipes that cross a match line are labelled
+   showing the same structure label, the two pages either side and the previous and next sheet numbers (pipes that cross a match line are labelled
    on the next sheet). Arch pipe written "65\" X 40\" RCP" in plan and "65\"X40\" RCAP" in profile is the same.
 2. Verify every finding by looking at the sheets (`render ... --clip`, 200-250 dpi): the profile note, the plan label
    and pipe label, and the XS note. Confirm the numbers really differ before keeping a flag. Typical real findings:
@@ -24,6 +24,15 @@ The engineer's rules:
    any difference yourself.
 4. Text drawn as linework is invisible to the script: if a plan or XS sheet has no text layer for its notes
    (index flag LOW_TEXT_DENSITY_POSSIBLE_SHX_TEXT), do the comparison visually and say so.
-5. Write `<work>/findings/notematch.json` with the confirmed findings (copy the script's findings, drop the ones you
-   rejected, add any you found by eye with ids NM-101 onward). Format: `references/findings_schema.md`.
-Reply with: plan checks, plan mismatches confirmed, XS checks, XS mismatches confirmed, and anything read by eye.
+5. Every profile note with a pipe line gets a plan check, including station-headed notes (drives, junction boxes,
+   culverts, existing pipes). Each structure note lists its DOWNSTREAM pipe, so compare it with the plan label on the
+   run leaving that structure in the flow direction. Things the script cannot read, so check them by eye:
+   - drive pipe labels written with an XX size (`40' - XX" ALT REQ'D.`): length and type (ALT vs RCP) must match the
+     profile drive note, the size must match once filled in, and a drawn drive pipe with no label is a finding;
+   - plan tags that are not the structure ID (`[SS-2_1]`, `B-9`, a typo like `[338A]` for 388 A).
+6. Write `<work>/findings/notematch.json` with the confirmed findings (copy the script's findings, add any you found
+   by eye with ids NM-101 onward). Format: `references/findings_schema.md`. Never drop a script flag silently: every
+   one ends up either in the file or in a `not_flagged` list in your reply with a one-line reason (e.g. "drive
+   pipe, no plan label expected", "label is on WK-26RT, the previous sheet number").
+Reply with: plan checks, plan mismatches confirmed, XS checks, XS mismatches confirmed, the `not_flagged` list, and
+anything read by eye.

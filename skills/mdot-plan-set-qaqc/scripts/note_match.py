@@ -28,7 +28,15 @@ from notes_core import extract_notes, K
 
 PIPE = re.compile(r"(\d+(?:\.\d+)?)'\s*(-)?\s*(\d+(?:\.\d+)?)\"\s*(?:X\s*(\d+)\"\s*)?([A-Z][A-Z0-9-]*)?", re.I)
 DASHLESS = []  # pipe lines written without the " - " between length and size
-LABEL = re.compile(r"^\[?\s*(\d{3,4})\s*([A-Z]{1,2})\s*\]?$")
+LABEL = re.compile(r"^\[?\s*(\d{3,4})\s*([A-Z]{1,2})\s*\]?(?:\s*\((?:MEDIAN|LT|RT)\))?$")
+TAG = re.compile(r"\[\s*(\d{3,4})\s*([A-Z]{1,2})\s*\]")
+DOUBLED = re.compile(r"^(\d{3,4}) \1 ([A-Z]{1,2}) \2\b")   # CAD overprint read twice: "425 425 B B"
+
+
+def sid_of(line):
+    """Structure ID ("465 B") from a note's first line or a plan label, else None (station-headed notes)."""
+    m = LABEL.match(DOUBLED.sub(r"\1 \2", norm(line)))
+    return f"{m.group(1)} {m.group(2)}" if m else None
 
 
 def fmt_sta(v):
@@ -65,8 +73,11 @@ def pipes_in(text):
 
 
 def same_material(a, b, size):
+    a, b = ("RCP" if (m or "").startswith("CL") else m for m in (a, b))   # "30\" CL. V, RCP" is class V RCP
     if a == b:
         return True
+    if "EXIST" in (a, b):
+        return True   # profile "EXIST. PIPE" vs plan "RCP IN PLACE": both describe the pipe in place
     return "X" in size and {a, b} <= {"RCP", "RCAP"}  # arch pipe: plan writes 65" X 40" RCP, profile writes RCAP
 
 
@@ -102,12 +113,18 @@ def plan_items(pdf, page_no):
             if r.y1 > top or r.x0 > page.rect.width * 0.92:
                 continue
             t = norm("".join(s["text"] for s in ln["spans"]))
-            m = LABEL.match(t)
-            if m:
+            sid = sid_of(t)
+            if sid:
+                labels.append(dict(id=sid, rect=list(r), text=t))
+                continue
+            # tags and pipe labels can run together in one text line: "[257A]34' - 24\" RCP REQ'D [257B] ..."
+            for m in TAG.finditer(t):
                 labels.append(dict(id=f"{m.group(1)} {m.group(2)}", rect=list(r), text=t))
-            elif PIPE.search(t) and not OPENING.search(t):   # "2 @ 18\"" is an opening count, not a pipe run
-                for pp in pipes_in(t):
-                    pipes.append(dict(pipe=pp, rect=list(r), text=t))
+            rest = TAG.sub(" ; ", t)
+            if PIPE.search(rest) and not OPENING.search(rest):   # "2 @ 18\"" is an opening count, not a pipe run
+                for part in rest.split(";"):
+                    for pp in pipes_in(part):
+                        pipes.append(dict(pipe=pp, rect=list(r), text=norm(part)))
     return labels, pipes
 
 
@@ -136,45 +153,55 @@ def main():
     prof = extract_notes(a.pdf, wk)
     by_id = {}
     for n in prof:
-        if LABEL.match(n["lines"][0]):
-            by_id.setdefault(n["lines"][0], []).append(n)
+        n["sid"] = sid_of(n["lines"][0])
+        if n["sid"]:
+            by_id.setdefault(n["sid"], []).append(n)
 
     # ---- plan note vs profile note (same WK sheet)
     plan_cache = {}
     for n in prof:
-        sid = n["lines"][0]
-        if not LABEL.match(sid):
-            continue  # drives, culverts, bridges: no plan structure label
+        sid = n["sid"] or n["lines"][0]   # station-headed notes (drives, JBs, culverts) are checked by pipe alone
         p = n["page"]
         if p not in plan_cache:
             plan_cache[p] = plan_items(a.pdf, p)
         labels, pipes = plan_cache[p]
         sh = sheet.get(p, f"p{p}")
         lab = [l for l in labels if l["id"] == sid]
+        if n["sid"] and not lab:   # tag drawn on the LT/RT partner sheet only
+            for q in wk:
+                if q != p and sheet_name(a.pdf, q) and sheet_name(a.pdf, p) and \
+                        re.sub(r"(LT|RT)$", "", sheet_name(a.pdf, q)) == re.sub(r"(LT|RT)$", "", sheet_name(a.pdf, p)):
+                    if q not in plan_cache:
+                        plan_cache[q] = plan_items(a.pdf, q)
+                    lab = [l for l in plan_cache[q][0] if l["id"] == sid]
+                    if lab:
+                        break
         n_pipes = []
         for line in n["lines"]:
             if "@" in line or "OPENINGS" in line:
                 continue  # openings ("1 @ 18\"") are not pipe runs
             n_pipes += [pp for pp in pipes_in(line) if pp[0] >= 1]
         loc_prof = [dict(page=p, rect=n["bbox"])]
-        if not lab:
+        if n["sid"] and not lab:
             add("medium", [sh], [p], f"{sid}: structure label not found in the plan view of {sh}",
                 f"profile note {sid} at STA {n['lines'][1] if len(n['lines']) > 1 else ''}", "Check the plan label",
                 loc_prof)
             checks.append(dict(kind="plan", id=sid, page=p, result="label missing"))
             continue
-        L = lab[0]
+        L = lab[0] if lab else dict(rect=n["bbox"])
         # pipe labels can sit anywhere along the run, or on the LT/RT partner sheet when the pipe crosses the road
         # where to look: this sheet, its LT/RT partner, every sheet showing the same structure label, and the two
         # sheets either side (pipes that cross a match line are labelled on the next sheet)
         for q in wk:
             if q not in plan_cache:
                 plan_cache[q] = plan_items(a.pdf, q)
-        label_pages = {q for q in wk if any(l["id"] == sid for l in plan_cache[q][0])}
+        label_pages = {q for q in wk if n["sid"] and any(l["id"] == sid for l in plan_cache[q][0])}
         partner = [q for q in wk if q != p and sheet_name(a.pdf, q) and sheet_name(a.pdf, p) and
                    re.sub(r"(LT|RT)$", "", sheet_name(a.pdf, q)) == re.sub(r"(LT|RT)$", "", sheet_name(a.pdf, p))]
-        partner = sorted(set(partner) | label_pages | {q for q in wk for lp in label_pages | {p} if abs(q - lp) <= 2}
-                         - {p})
+        num = lambda q: int(m.group(1)) if (m := re.match(r"[A-Z]+-(\d+)", sheet_name(a.pdf, q) or "")) else None
+        near_no = {q for q in wk if num(q) is not None and num(p) is not None and abs(num(q) - num(p)) <= 1}
+        partner = sorted(set(partner) | label_pages | near_no |
+                         {q for q in wk for lp in label_pages | {p} if abs(q - lp) <= 2} - {p})
         pool = [(p, pp) for pp in pipes]
         for q in partner:
             if q not in plan_cache:
@@ -203,17 +230,19 @@ def main():
                                        f"{npipe[2] or '(no material)'} has no matching pipe label in the plan view "
                                        f"of {sh} or nearby sheets",
                     f"nearest plan labels: {plan_txt}", "Make the plan label and the profile note agree",
-                    loc_prof + [dict(page=p, rect=pp["rect"]) for pp in nearest] + [dict(page=p, rect=L["rect"])])
+                    loc_prof + [dict(page=p, rect=pp["rect"]) for pp in nearest] + ([dict(page=p, rect=L["rect"])] if lab else []))
 
     # ---- profile note vs cross-section note (exact)
     if xs:
         xsn = extract_notes(a.pdf, xs, region=(0.02, 0.03, 0.92, 0.97))
         for n in prof:
-            sid = n["lines"][0]
-            cands = [x for x in xsn if x["lines"] and x["lines"][0] == sid] if LABEL.match(sid) else []
-            if not cands:
+            sid = n["sid"] or n["lines"][0]
+            for x in xsn:
+                x.setdefault("sid", sid_of(x["lines"][0]) if x["lines"] else None)
+            cands = [x for x in xsn if x["sid"] == n["sid"]] if n["sid"] else []
+            if not cands:   # fall back to station, but never pair two different structure IDs (337 A vs 337 B)
                 cands = [x for x in xsn if abs(x["sta"] - n["sta"]) < 0.005 and len(x["lines"]) > 2
-                         and x["lines"][1:3] == n["lines"][1:3]]
+                         and x["lines"][1:3] == n["lines"][1:3] and x["sid"] == n["sid"]]
             sh = sheet.get(n["page"], f"p{n['page']}")
             if not cands:
                 checks.append(dict(kind="xs", id=sid, page=n["page"], result="no xs note"))
