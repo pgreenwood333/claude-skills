@@ -45,7 +45,7 @@ SQ (SQ-BR sheets) if the job has a bridge and only the roadway SQ was given.
 Everything is Base Bid unless the SQ has an explicit label row ("BASE BID", "ADD OPTION 1", "A1"/"A2" → ADD OPTION
 1/2, "ADDITIVE ALTERNATE 2"); any other text-only row is ignored with a warning. "OR" rows mark alternates (e.g.
 304-F001 OR 304-F002 OR 304-F003, same quantity). Like the firm's OPCC sheet, EVERY alternate gets its own row
-with its own MDOT price, but only ONE counts in the totals (the contractor bids one). Column I on alternate rows
+with its own MDOT price, but only ONE counts in the totals (the contractor bids one). Column J (ALT. COUNTED) on alternate rows
 holds a YES/NO dropdown: YES starts on the lowest suggested MDOT price; rows marked NO show grey and are left out
 of TOTAL ITEMS COST, the % items and the SUB-TOTAL. The engineer switches it by moving the YES.
 It skips note bubbles and notes
@@ -71,18 +71,22 @@ Header labels sit in merged cells so nothing spills over. Excel can't widen colu
 macro, so a much bigger number typed in later may show `####` until the column is widened.
 
 What it writes, one tab per bid section, in the firm's OPCC layout:
-- **Columns C–I and L:** PAY ITEM NO., PAY ITEM, UNIT, QTY, UNIT PRICE, TOTAL, % OF ITEMS, then a blank
-  two-column gap (J:K), then REMARKS in L.
-  TOTAL ITEMS COST is in G4, followed by SUB-TOTAL, Contingencies and TOTAL rows.
-- **Columns N–Q + S–T:** the inflation block. YEAR = price year, INITIAL COST = suggested price.
-  Inflation is 8%/yr from 2020 and 3%/yr before 2020, up to the estimate year. UNIT PRICE = the inflated price.
-- **Columns V–AE:** MDOT bid data used, with the exact MDOT values: search range, price year, min/max/avg
+- **Columns C–J:** PAY ITEM NO., PAY ITEM, UNIT, QTY, UNIT PRICE, TOTAL, **% OF ITEMS**, **ALT. COUNTED**; then a
+  blank two-column gap (K:L); then REMARKS in M. TOTAL ITEMS COST is in G4, followed by SUB-TOTAL, Contingencies and
+  TOTAL rows.
+- **Columns O–R + T–U:** the inflation block. YEAR = price year, INITIAL COST = suggested price.
+  Inflation is 8%/yr from 2020 and 3%/yr before 2020, up to the estimate year.
+- **Columns W–AF:** MDOT bid data used, with the exact MDOT values: search range, price year, min/max/avg
   quantity, low/avg/high price, suggested price before inflation, and the method used.
-- **Percentage items** (MOT 907-618-A001, Mobilization 620-A001, Construction Stakes 699-A001, Clearing &
-  Grubbing ONLY when paid by Lump Sum (201-A001 / unit LS), and the Contingency row): 5% each, with a dropdown in column I to change it.
-  They are a % of TOTAL ITEMS COST (Contingency is a % of SUB-TOTAL). A hidden column M keeps this from
-  becoming a circular reference. Clearing & Grubbing by the Acre (201-B001) is NOT a percentage item: it is priced
-  from MDOT bids like any other item.
+- **% OF ITEMS (column I) has a dropdown on EVERY pay item row** (0.5%, 1%–20%, or type any %). Blank = the line
+  uses its unit price. A % turns that line into % x TOTAL ITEMS COST and overrides its unit price (e.g. Service
+  Patrol at 1%); deleting the % goes back to the unit price. REMARKS shows "x% OF TOTAL ITEMS COST" automatically.
+  TOTAL ITEMS COST adds only the lines WITHOUT a % (and only alternates marked YES), through a hidden helper
+  column N that never reads the price/total columns, so there is no circular reference.
+- **Default % items:** MOT 907-618-A001, Mobilization 620-A001, Construction Stakes 699-A001, Clearing & Grubbing
+  ONLY when paid by Lump Sum (201-A001 / unit LS): 5% each. Contingencies: 5% of SUB-TOTAL (its own dropdown).
+  Clearing & Grubbing by the Acre (201-B001) is NOT a % item: it is priced from MDOT bids like any other item.
+- **ALT. COUNTED (column J):** YES/NO dropdown on alternate rows only (see "OR" alternates above).
 
 Suggested price rules (`suggest()` in `build_opcc.py`):
 - Normal items use a line from (min qty, high price) to (max qty, low price), with quantity on a log scale.
@@ -91,7 +95,7 @@ Suggested price rules (`suggest()` in `build_opcc.py`):
 - If high > 10× low (usually penny or unbalanced bids): the average price, with "CHECK: wide MDOT price range"
   in REMARKS.
 - Only one bid price: that price, with "CHECK: only one MDOT bid price".
-- **Left blank for the engineer** (yellow cells N/O, reason in REMARKS):
+- **Left blank for the engineer** (yellow cells O/P, reason in REMARKS):
   - Per Plans items (`-PP`)
   - no MDOT price found
   - unit on the SQ differs from MDOT's unit
@@ -116,4 +120,4 @@ Say plainly that the prices are a starting point from MDOT bid history; the engi
 - Never edit the user's SQ; write the OPCC next to it (or where they say).
 - If MDOT's description differs from the SQ, keep the SQ wording and note "MDOT: ..." in REMARKS.
 - Revisions (a different %, a different price, re-run with a newer SQ): rebuild with the script. For a single
-  price, the user can type over column O (INITIAL COST) and N (YEAR) themselves.
+  price, the user can type over column P (INITIAL COST) and O (YEAR) themselves, or pick a % in column I.

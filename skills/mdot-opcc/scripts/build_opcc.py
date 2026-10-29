@@ -3,9 +3,9 @@
 
 Input: the JSON from read_sq.py. Prices come from mdot_bid_prices.lookup().
 Layout follows the firm's OPCC sheet (one tab per bid section):
-  C PAY ITEM NO. | D PAY ITEM | E UNIT | F QTY | G UNIT PRICE | H TOTAL | I % | (J:K gap) | L REMARKS
-  N YEAR | O INITIAL COST | P COST IN 2020 | Q ESTIMATE YR   (inflation, S4:T6 rates)
-  V..AE  MDOT bid data used (range, price year, quantities, low/avg/high, suggested, method)
+  C PAY ITEM NO. | D PAY ITEM | E UNIT | F QTY | G UNIT PRICE | H TOTAL | I % OF ITEMS | J ALT. COUNTED |
+  (K:L gap) | M REMARKS | O YEAR | P INITIAL COST | Q COST IN 2020 | R ESTIMATE YR (inflation, T4:U6 rates)
+  W..AF  MDOT bid data used (range, price year, quantities, low/avg/high, suggested, method)
 
 Usage:
   build_opcc.py sq.json --project "Lakeland Drive Pedestrian Bridge" --fa "STBG-9999-05(413)" \
@@ -204,7 +204,20 @@ def prior_price(prior: dict, sheet: str, item: str, desc: str):
     return None
 
 
+def _q(text: str) -> str:
+    """Text as an Excel string literal."""
+    return '"' + str(text).replace('"', '""') + '"'
+
+
 def write_sheet(wb, sec, prices, meta, pct_ref):
+    """Layout (one tab per bid section):
+      C PAY ITEM NO. | D PAY ITEM | E UNIT | F QTY | G UNIT PRICE | H TOTAL | I % OF ITEMS | J ALT. COUNTED |
+      K:L blank gap | M REMARKS | N hidden helper | O YEAR | P INITIAL COST | Q COST IN 2020 | R ESTIMATE YR |
+      T:U inflation rates | W..AF MDOT bid data used.
+    Every pay item row has the same formulas: a % picked in column I makes that line I x TOTAL ITEMS COST and
+    overrides its unit price; blank I uses the unit price (YEAR / INITIAL COST, inflated). Alternates have YES/NO
+    in J; only YES rows count. TOTAL ITEMS COST (G4) = the hidden helper N, which never reads G or H, so there is no
+    circular reference whichever lines are percentages."""
     ws = wb.create_sheet(sec["name"].title()[:31])
     est_year = meta["today"].year
     ws["D1"] = "OPINION OF PROBABLE CONSTRUCTION COST"; ws["D1"].font = Font(bold=True, size=14)
@@ -212,47 +225,41 @@ def write_sheet(wb, sec, prices, meta, pct_ref):
     ws["G2"].number_format = "m/d/yyyy"
     ws["D3"] = f"{meta['county']} COUNTY" if meta["county"] else ""
     ws["E3"] = "UPDATED BY:"; ws["G3"] = meta["by"]
-    ws["N3"] = "ENTER YEAR & COST"
+    ws["O3"] = "ENTER YEAR & COST"
     ws["D4"] = f"{meta['job_slash']}  {meta['fa']}".strip()
     ws["E4"] = "TOTAL ITEMS COST:"
-    ws["S4"] = "UNIT PRICE INFLATION"
+    ws["T4"] = "UNIT PRICE INFLATION"
     heads = {"C": "PAY ITEM NO.", "D": "PAY ITEM", "E": "UNIT", "F": "QTY", "G": "UNIT PRICE", "H": "TOTAL",
-             "I": "% OF ITEMS / ALT. COUNTED", "L": "REMARKS", "N": "INFLATION", "P": "COST IN YR", "Q": "ESTIMATE YR",
-             "S": "2020 - 2025 @", "T": 0.08}
+             "I": "% OF ITEMS", "J": "ALT. COUNTED", "M": "REMARKS", "O": "INFLATION", "Q": "COST IN YR",
+             "R": "ESTIMATE YR", "T": "2020 - 2025 @", "U": 0.08}
     for c, v in heads.items():
         ws[f"{c}5"] = v
-    ws["N6"], ws["O6"], ws["P6"], ws["Q6"] = "YEAR", "INITIAL COST", 2020, est_year
-    ws["S6"], ws["T6"] = "BEFORE 2020 @", 0.03
-    ws["T5"].number_format = ws["T6"].number_format = "0%"
-    # MDOT block
-    ws["V3"] = (f"MDOT ITEM BID PRICES - aashtoreports.mdot.ms.gov BidPrices report, downloaded "
+    ws["O6"], ws["P6"], ws["Q6"], ws["R6"] = "YEAR", "INITIAL COST", 2020, est_year
+    ws["T6"], ws["U6"] = "BEFORE 2020 @", 0.03
+    ws["U5"].number_format = ws["U6"].number_format = "0%"
+    ws["W3"] = (f"MDOT ITEM BID PRICES - aashtoreports.mdot.ms.gov BidPrices report, downloaded "
                 f"{meta['downloaded']}. Exact values as published by MDOT.")
-    ws["V3"].font = Font(italic=True, size=9)
+    ws["W3"].font = Font(italic=True, size=9)
     mdot_heads = ["SEARCH RANGE", "PRICE YEAR", "MIN QTY", "MAX QTY", "AVG QTY", "LOW PRICE", "AVG PRICE",
                   "HIGH PRICE", "SUGGESTED (BEFORE INFLATION)", "METHOD"]
-    ws["V4"] = "MDOT BID DATA USED"; ws["V4"].font = BOLD
+    ws["W4"] = "MDOT BID DATA USED"; ws["W4"].font = BOLD
     for i, h in enumerate(mdot_heads):
-        ws.cell(5, 22 + i, h)
+        ws.cell(5, 23 + i, h)
+    boxed = list(range(3, 11)) + [13] + list(range(15, 19))
     for row in (5, 6):
-        for col in list(range(3, 10)) + [12] + list(range(14, 18)) + list(range(22, 32)):
+        for col in boxed + list(range(23, 33)):
             c = ws.cell(row, col); c.font = BOLD; c.alignment = CENTER; c.fill = HEAD_FILL; c.border = BOX
-    ws.merge_cells("N5:O5")
-    # header labels get merged cells so nothing spills into the next column
+    ws.merge_cells("O5:P5")
     for rng in ("E2:F2", "E3:F3", "E4:F4"):
         ws.merge_cells(rng); ws[rng.split(":")[0]].alignment = Alignment(horizontal="right")
-    for rng in ("N3:Q3", "S4:T4", "V4:AE4"):
+    for rng in ("O3:R3", "T4:U4", "W4:AF4"):
         ws.merge_cells(rng); ws[rng.split(":")[0]].alignment = Alignment(horizontal="center")
-    ws.merge_cells("V3:AE3"); ws["V3"].alignment = Alignment(wrap_text=True, vertical="top")
+    ws.merge_cells("W3:AF3"); ws["W3"].alignment = Alignment(wrap_text=True, vertical="top")
     ws.row_dimensions[3].height = 26
     ws.row_dimensions[5].height = 45
 
-    first = 7
-    r = first
-    pct_rows = []
-    alt_rows = []
-    flagged = []
-    checks = []
-    from_prior = []
+    first = r = 7
+    alt_rows, flagged, checks, from_prior = [], [], [], []
     lines = mark_alternates(sec["items"], prices)
     check_lines(sec, lines)
     for it in lines:
@@ -260,55 +267,49 @@ def write_sheet(wb, sec, prices, meta, pct_ref):
         rec = prices.get(code)
         s = suggest(it, rec)
         ws[f"C{r}"], ws[f"D{r}"], ws[f"E{r}"], ws[f"F{r}"] = code, it["description"], it["unit"], it["qty"]
+        orig = None
         if s.get("percent"):
-            pct_rows.append(r)
             ws[f"I{r}"] = DEFAULT_PCT
-            ws[f"I{r}"].number_format = "0%"; ws[f"I{r}"].fill = INPUT_FILL
-            ws[f"H{r}"] = f"=ROUNDUP(I{r}*$G$4,0)"
-            ws[f"G{r}"] = f"=IF(F{r}>0,H{r}/F{r},H{r})"
-            ws[f"L{r}"] = f'=TEXT(I{r},"0%")&" OF TOTAL ITEMS COST"'
+        elif s["price"] is not None:
+            ws[f"O{r}"], ws[f"P{r}"] = s["year"], s["price"]
         else:
-            orig = None
-            if s["price"] is None and s["flag"] == "No MDOT bid price found":
+            if s["flag"] == "No MDOT bid price found":
                 orig = prior_price(meta.get("prior"), sec["name"], code, it["description"])
-            if s["price"] is not None:
-                ws[f"N{r}"], ws[f"O{r}"] = s["year"], s["price"]
-            elif orig is not None:
-                # original OPCC unit price, already in estimate-year dollars, so no extra inflation
-                ws[f"N{r}"], ws[f"O{r}"] = est_year, round(orig, 2)
-                ws[f"N{r}"].fill = ws[f"O{r}"].fill = PRIOR_FILL
+            if orig is not None:  # original OPCC price is already in estimate-year dollars: no extra inflation
+                ws[f"O{r}"], ws[f"P{r}"] = est_year, round(orig, 2)
+                ws[f"O{r}"].fill = ws[f"P{r}"].fill = PRIOR_FILL
                 from_prior.append((code, it["description"], orig))
             else:
-                ws[f"N{r}"].fill = ws[f"O{r}"].fill = INPUT_FILL
+                ws[f"O{r}"].fill = ws[f"P{r}"].fill = INPUT_FILL
                 flagged.append((code, it["description"], s["flag"]))
-            ws[f"P{r}"] = f'=IF(AND(N{r}<>"",N{r}<$P$6),O{r}*(1+$T$6)^($P$6-N{r}),"")'
-            ws[f"Q{r}"] = (f'=IF(OR(N{r}="",O{r}=""),"",ROUND(IF(N{r}<$P$6,P{r}*(1+$T$5)^($Q$6-$P$6),'
-                           f'O{r}*(1+$T$5)^($Q$6-N{r})),2))')
-            ws[f"G{r}"] = f'=IF(Q{r}="","",Q{r})'
-            ws[f"H{r}"] = f'=IF(G{r}="","",F{r}*G{r})'
-            if it.get("alt_group"):
-                # alternate: YES/NO in column I says whether this row counts in the totals
-                ws[f"I{r}"] = "YES" if it["alt_counted"] else "NO"
-                ws[f"I{r}"].fill = INPUT_FILL
-                ws[f"I{r}"].alignment = Alignment(horizontal="center")
-                alt_rows.append(r)
-                ws[f"M{r}"] = f'=IF(I{r}="YES",N(H{r}),0)'
-            else:
-                ws[f"M{r}"] = f"=N(H{r})"  # hidden helper: items cost without the % rows (avoids a circular ref)
-            notes = []
-            if s["flag"]:
-                notes.append(s["flag"])
-            if orig is not None:
-                notes.append(f"used original OPCC price ${orig:,.2f}")
-            if it.get("alt_note"):
-                notes.append(it["alt_note"])
-            if s.get("note"):
-                notes.append(s["note"])
-                checks.append((code, it["description"], s["note"]))
-            if rec and rec.get("found") and rec.get("description") and \
-                    rec["description"].strip().lower() != it["description"].strip().lower():
-                notes.append(f"MDOT: {rec['description']}")
-            ws[f"L{r}"] = "; ".join(notes) or None
+        ws[f"I{r}"].number_format = "0.0%"; ws[f"I{r}"].fill = INPUT_FILL
+        ws[f"Q{r}"] = f'=IF(AND(O{r}<>"",O{r}<$Q$6),P{r}*(1+$U$6)^($Q$6-O{r}),"")'
+        ws[f"R{r}"] = (f'=IF(OR(O{r}="",P{r}=""),"",ROUND(IF(O{r}<$Q$6,Q{r}*(1+$U$5)^($R$6-$Q$6),'
+                       f'P{r}*(1+$U$5)^($R$6-O{r})),2))')
+        ws[f"H{r}"] = f'=IF(I{r}<>"",ROUNDUP(I{r}*$G$4,0),IF(R{r}="","",F{r}*R{r}))'
+        ws[f"G{r}"] = f'=IF(I{r}<>"",IF(F{r}>0,H{r}/F{r},H{r}),IF(R{r}="","",R{r}))'
+        ws[f"N{r}"] = f'=IF(OR(I{r}<>"",J{r}="NO",R{r}=""),0,F{r}*R{r})'
+        if it.get("alt_group"):
+            ws[f"J{r}"] = "YES" if it["alt_counted"] else "NO"
+            ws[f"J{r}"].fill = INPUT_FILL
+            ws[f"J{r}"].alignment = Alignment(horizontal="center")
+            alt_rows.append(r)
+        notes = []
+        if s["flag"] and not s.get("percent"):
+            notes.append(s["flag"])
+        if orig is not None:
+            notes.append(f"used original OPCC price ${orig:,.2f}")
+        if it.get("alt_note"):
+            notes.append(it["alt_note"])
+        if s.get("note"):
+            notes.append(s["note"])
+            checks.append((code, it["description"], s["note"]))
+        if rec and rec.get("found") and rec.get("description") and \
+                rec["description"].strip().lower() != it["description"].strip().lower():
+            notes.append(f"MDOT: {rec['description']}")
+        note = "; ".join(notes)
+        ws[f"M{r}"] = (f'=IF(I{r}<>"",TEXT(I{r},"0.0%")&" OF TOTAL ITEMS COST"&{_q("; " if note else "")},"")'
+                       f'&{_q(note)}')
         # MDOT data block (exact values)
         if rec and rec.get("found"):
             vals = [rec["range"], rec["price_year"], rec["min_qty"], rec["max_qty"], rec["avg_qty"],
@@ -316,78 +317,75 @@ def write_sheet(wb, sec, prices, meta, pct_ref):
         else:
             vals = [rec["range"] if rec else None, None, None, None, None, None, None, None, None,
                     s["method"] if s.get("percent") else "No MDOT bid price found"]
-            if not s.get("percent") and orig is not None:
+            if orig is not None:
                 vals[-1] = "No MDOT bid price -> original OPCC price"
         if s.get("percent") and rec and rec.get("found"):
             vals[-1] = "% of total items cost (MDOT data for reference only)"
         for i, v in enumerate(vals):
-            c = ws.cell(r, 22 + i, v); c.fill = DATA_FILL; c.border = BOX
+            c = ws.cell(r, 23 + i, v); c.fill = DATA_FILL; c.border = BOX
             if 2 <= i <= 4:
                 c.number_format = QTYF
             elif 5 <= i <= 8:
                 c.number_format = MONEY
-        for col in list(range(3, 10)) + [12] + list(range(14, 18)):
+        for col in boxed:
             ws.cell(r, col).border = BOX
         r += 1
     last = r - 1
 
     # totals
-    ws["G4"] = f"=SUM(M{first}:M{last})"
-    ws.column_dimensions["M"].hidden = True
+    ws["G4"] = f"=SUM(N{first}:N{last})"
+    ws.column_dimensions["N"].hidden = True
     ws["G4"].number_format = MONEY0; ws["G4"].font = BOLD
     sub, cont, tot = r + 1, r + 3, r + 5
-    # SUB-TOTAL = counted pay items (G4, which leaves out alternates marked NO) + the % items
-    ws[f"C{sub}"] = "SUB-TOTAL"; ws[f"H{sub}"] = f'=G4+SUMIF(I{first}:I{last},">0",H{first}:H{last})'
+    # SUB-TOTAL = counted unit-price items (G4) + every line set to a % (alternates marked NO left out)
+    ws[f"C{sub}"] = "SUB-TOTAL"
+    ws[f"H{sub}"] = f'=G4+SUMIFS(H{first}:H{last},I{first}:I{last},">0",J{first}:J{last},"<>NO")'
     ws[f"D{cont}"] = "Contingencies"; ws[f"E{cont}"] = "LS"; ws[f"F{cont}"] = 1
-    ws[f"I{cont}"] = DEFAULT_PCT; ws[f"I{cont}"].number_format = "0%"; ws[f"I{cont}"].fill = INPUT_FILL
+    ws[f"I{cont}"] = DEFAULT_PCT; ws[f"I{cont}"].number_format = "0.0%"; ws[f"I{cont}"].fill = INPUT_FILL
     ws[f"H{cont}"] = f"=ROUNDUP(I{cont}*H{sub},0)"; ws[f"G{cont}"] = f"=H{cont}"
-    ws[f"L{cont}"] = f'=TEXT(I{cont},"0%")&" OF SUB-TOTAL"'
+    ws[f"M{cont}"] = f'=TEXT(I{cont},"0.0%")&" OF SUB-TOTAL"'
     ws[f"C{tot}"] = "TOTAL"; ws[f"H{tot}"] = f"=H{sub}+H{cont}"
     for rr in (sub, cont, tot):
         ws[f"C{rr}"].font = ws[f"H{rr}"].font = BOLD
         ws[f"H{rr}"].number_format = MONEY0
         ws[f"G{rr}"].number_format = MONEY0
 
-    # % dropdowns
-    dv = DataValidation(type="list", formula1=pct_ref, allow_blank=False,
-                        prompt="Pick a percentage, or type your own", promptTitle="Percent",
-                        showInputMessage=True, showErrorMessage=False)
+    # % dropdown on EVERY pay item row (blank = use the unit price) and on Contingencies
+    dv = DataValidation(type="list", formula1=pct_ref, allow_blank=True,
+                        prompt="Pick a % to price this line as % of TOTAL ITEMS COST (overrides the unit price). "
+                               "Delete it to go back to the unit price. You can also type any %.",
+                        promptTitle="% of total items cost", showInputMessage=True, showErrorMessage=False)
     ws.add_data_validation(dv)
-    for rr in pct_rows + [cont]:
-        dv.add(f"I{rr}")
+    dv.add(f"I{first}:I{last}")
+    dv.add(f"I{cont}")
+    from openpyxl.formatting.rule import FormulaRule
     if alt_rows:
         dva = DataValidation(type="list", formula1='"YES,NO"', allow_blank=False,
                              prompt="Alternates: the contractor bids one. Mark exactly one row in this group YES.",
                              promptTitle="Count this alternate?", showInputMessage=True, showErrorMessage=True)
         ws.add_data_validation(dva)
         for rr in alt_rows:
-            dva.add(f"I{rr}")
-        # rows marked NO show grey so it's clear they aren't in the total
-        from openpyxl.formatting.rule import FormulaRule
-        for rr in alt_rows:
-            ws.conditional_formatting.add(f"C{rr}:H{rr}", FormulaRule(formula=[f'$I${rr}="NO"'],
+            dva.add(f"J{rr}")
+            ws.conditional_formatting.add(f"C{rr}:H{rr}", FormulaRule(formula=[f'$J${rr}="NO"'],
                                           font=Font(color="808080", italic=True)))
 
-    # formats
     for rr in range(first, last + 1):
         ws[f"F{rr}"].number_format = QTYF
-        ws[f"G{rr}"].number_format = MONEY
-        ws[f"H{rr}"].number_format = MONEY
-        ws[f"O{rr}"].number_format = MONEY
-        ws[f"P{rr}"].number_format = MONEY
-        ws[f"Q{rr}"].number_format = MONEY
+        for col in "GHPQR":
+            ws[f"{col}{rr}"].number_format = MONEY
         ws[f"E{rr}"].alignment = Alignment(horizontal="center")
-    # J:K are a blank gap; M is the hidden helper column
-    widths = {"A": 2, "B": 2, "C": 15, "D": 48, "E": 7, "F": 10, "G": 16, "H": 17, "I": 9, "J": 9, "K": 9,
-              "L": 40, "M": 2, "N": 8, "O": 16, "P": 16, "Q": 16, "R": 2, "S": 15, "T": 7, "U": 3, "V": 23,
-              "W": 8, "X": 10, "Y": 10, "Z": 10, "AA": 16, "AB": 16, "AC": 16, "AD": 16, "AE": 34}
+        ws[f"I{rr}"].alignment = Alignment(horizontal="center")
+    # K:L blank gap; N hidden helper
+    widths = {"A": 2, "B": 2, "C": 15, "D": 48, "E": 7, "F": 10, "G": 16, "H": 17, "I": 10, "J": 10, "K": 9,
+              "L": 9, "M": 40, "N": 2, "O": 8, "P": 16, "Q": 16, "R": 16, "S": 2, "T": 15, "U": 7, "V": 3, "W": 23,
+              "X": 8, "Y": 10, "Z": 10, "AA": 10, "AB": 16, "AC": 16, "AD": 16, "AE": 16, "AF": 34}
     for k, v in widths.items():
         ws.column_dimensions[k].width = v
     ws.freeze_panes = "E7"
     ws.sheet_view.zoomScale = 85
     ws.page_setup.orientation = "landscape"; ws.page_setup.fitToWidth = 1; ws.page_setup.fitToHeight = 0
     ws.sheet_properties.pageSetUpPr.fitToPage = True
-    ws.print_area = f"C1:L{tot}"
+    ws.print_area = f"C1:M{tot}"
     return flagged, checks, from_prior
 
 
@@ -398,12 +396,12 @@ def build(sq: dict, meta: dict, out: str, refresh=False, log=print):
     meta["downloaded"] = ", ".join(downloaded) or meta["today"].isoformat()
     wb = Workbook()
     lists = wb.active; lists.title = "Lists"
-    for i in range(1, 21):
-        lists.cell(i, 1, i / 100).number_format = "0%"
+    for i, v in enumerate([0.005] + [k / 100 for k in range(1, 21)], start=1):
+        lists.cell(i, 1, v).number_format = "0.0%"
     lists.sheet_state = "hidden"
     report = {}
     for sec in sq["sections"]:
-        report[sec["name"]] = write_sheet(wb, sec, prices, meta, "Lists!$A$1:$A$20")
+        report[sec["name"]] = write_sheet(wb, sec, prices, meta, "Lists!$A$1:$A$21")
     wb.move_sheet("Lists", offset=len(wb.sheetnames))
     wb.active = 0
     wb.save(out)
