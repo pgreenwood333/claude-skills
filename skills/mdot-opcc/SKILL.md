@@ -10,8 +10,12 @@ and `pycel` (used for sizing columns; optional). If any are missing (e.g. in Cow
 `pip install openpyxl requests pymupdf pycel --break-system-packages -q`.
 The scripts must be able to reach `aashtoreports.mdot.ms.gov` over the internet. If that is blocked, say so;
 never make up prices.
-MDOT downloads are cached in `/Volumes/PGExtHD/OPCC/cache/` when that drive is present, otherwise in
-`~/.cache/mdot-bid-prices` (set `MDOT_BID_CACHE` to choose).
+**Where MDOT downloads are kept (first use):** the price lookup saves MDOT's downloaded price files in a
+folder the user chooses, so repeat lookups are instant. The first time (or when a script says "No folder chosen
+for MDOT price downloads yet"), ask the user where they'd like them kept, suggesting a folder such as
+`~/Documents/MDOT bid prices`, then run `python3 $S/mdot_bid_prices.py set-cache "<folder>"`. The choice is saved in
+`~/.config/mdot-opcc/settings.json`; `mdot_bid_prices.py where` shows it. In Cowork, where the home folder may
+not last between sessions, suggest a folder inside the user's selected work folder. `MDOT_BID_CACHE` overrides it.
 
 ## Price lookup on its own
 
