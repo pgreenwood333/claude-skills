@@ -187,6 +187,66 @@ def lookup(items: list[str], today: dt.date | None = None, refresh: bool = False
     return out
 
 
+def inflate(price: float, year: int, to_year: int, rate: float = 0.08, old_rate: float = 0.03,
+            base: int = 2020) -> float:
+    """Same inflation as the OPCC sheet: old_rate/yr up to `base`, then rate/yr up to `to_year`."""
+    if year < base:
+        return price * (1 + old_rate) ** (base - year) * (1 + rate) ** (to_year - base)
+    return price * (1 + rate) ** (to_year - year)
+
+
+def widen_single_project(prices: dict, today: dt.date | None = None, years_back: int = MAX_YEARS_BACK,
+                         refresh: bool = False, log=lambda m: None, **rates) -> dict:
+    """Guardrail: an item whose search range holds only ONE bid quantity (one project) is not a reliable price.
+    For those items, pull earlier years one at a time (single-year ranges) until the bids come from at least two
+    different quantities, up to `years_back` years. Each year's prices are inflated to today's year on their own
+    (same rates as the sheet) and then combined: low = lowest, high = highest, avg = mean of the yearly averages,
+    quantity range = across all years. The result is in today's dollars (price_year = today's year, inflated=True).
+    If ten years still show one project, the item is kept as found and marked single_project=True."""
+    today = today or dt.date.today()
+    oldest = today.year - years_back + 1
+    single = [k for k, r in prices.items() if r.get("found") and r["min_qty"] == r["max_qty"]]
+    if not single:
+        return prices
+    log(f"{len(single)} item(s) have bids from only one project; checking earlier years one at a time")
+    yearly = {}
+    out = dict(prices)
+    for code in single:
+        rec = prices[code]
+        recs = {}
+        y = rec["price_year"]
+        while y >= oldest:
+            if y not in yearly:
+                end = min(dt.date(y, 12, 31), today)
+                yearly[y] = get_range(dt.date(y, 1, 1), end, refresh=refresh)["items"]
+            r = yearly[y].get(code)
+            if r:
+                recs[y] = r
+                qtys = {v for x in recs.values() for v in (x["min_qty"], x["max_qty"])}
+                if len(qtys) >= 2:
+                    break
+            y -= 1
+        qtys = {v for x in recs.values() for v in (x["min_qty"], x["max_qty"])}
+        if len(recs) < 2 and len(qtys) < 2:
+            out[code] = {**rec, "single_project": True}
+            continue
+        yrs = sorted(recs)
+        f = lambda v, yr: round(inflate(v, yr, today.year, **rates), 2)
+        out[code] = {**rec,
+                     "min_qty": min(x["min_qty"] for x in recs.values()),
+                     "max_qty": max(x["max_qty"] for x in recs.values()),
+                     "avg_qty": round(sum(x["avg_qty"] for x in recs.values()) / len(recs), 2),
+                     "low_price": min(f(x["low_price"], yr) for yr, x in recs.items()),
+                     "high_price": max(f(x["high_price"], yr) for yr, x in recs.items()),
+                     "avg_price": round(sum(f(x["avg_price"], yr) for yr, x in recs.items()) / len(recs), 2),
+                     "price_year": today.year, "inflated": True, "years_used": yrs,
+                     "range": f"{yrs[0]}-{yrs[-1]} by year ({', '.join(str(v) for v in yrs)}), "
+                              f"inflated to {today.year}",
+                     "yearly": {yr: {k2: x[k2] for k2 in ("min_qty", "max_qty", "low_price", "avg_price",
+                                                           "high_price")} for yr, x in recs.items()}}
+    return out
+
+
 def _main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)

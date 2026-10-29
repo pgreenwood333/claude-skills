@@ -56,6 +56,23 @@ UNITS = {
 
 # ------------------------------------------------------------------ pricing
 def suggest(item: dict, rec: dict | None) -> dict:
+    """Suggested price for one SQ line, plus notes for the one-project guardrail."""
+    res = _suggest_core(item, rec)
+    if not rec or not rec.get("found") or res.get("percent") or res["price"] is None:
+        return res
+    extra = None
+    if rec.get("inflated"):
+        extra = (f"MDOT bids from {rec['years_used'][0]}-{rec['years_used'][-1]} combined (latest range had only "
+                 f"one project); each year inflated to {rec['price_year']} before combining")
+        res["method"] = f"{res['method']} [years {rec['years_used'][0]}-{rec['years_used'][-1]} combined]"
+    elif rec.get("single_project"):
+        extra = "CHECK: only one MDOT project in 10 years of bids - use judgment"
+    if extra:
+        res["note"] = f"{res['note']}; {extra}" if res.get("note") else extra
+    return res
+
+
+def _suggest_core(item: dict, rec: dict | None) -> dict:
     """Return {'price', 'year', 'method', 'flag'} for one SQ line."""
     code, qty = item["item"], item["qty"]
     if is_percent_item(item):
@@ -394,6 +411,8 @@ def write_sheet(wb, sec, prices, meta, pct_ref):
 def build(sq: dict, meta: dict, out: str, refresh=False, log=print):
     codes = [it["item"] for s in sq["sections"] for it in s["items"]]
     prices = mbp.lookup(codes, today=meta["today"], refresh=refresh, log=log)
+    # guardrail: one project is not enough to price from, so widen year by year (see widen_single_project)
+    prices = mbp.widen_single_project(prices, today=meta["today"], refresh=refresh, log=log)
     downloaded = sorted({p["downloaded"] for p in prices.values() if p.get("found")})
     meta["downloaded"] = ", ".join(downloaded) or meta["today"].isoformat()
     wb = Workbook()

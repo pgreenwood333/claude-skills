@@ -88,6 +88,15 @@ What it writes, one tab per bid section, in the firm's OPCC layout:
   Clearing & Grubbing by the Acre (201-B001) is NOT a % item: it is priced from MDOT bids like any other item.
 - **ALT. COUNTED (column J):** YES/NO dropdown on alternate rows only (see "OR" alternates above).
 
+**One-project guardrail** (`widen_single_project()` in `mdot_bid_prices.py`): if the range where an item is first
+found has only one bid quantity (one project), one job is not enough to price from. The skill pulls earlier years
+one at a time (single-year ranges) until the bids come from at least two projects, up to 10 years back. Each
+year's prices are inflated to the estimate year on their own (sheet rates: 8%/yr from 2020, 3%/yr before), then
+combined (lowest low, highest high, mean of the yearly averages, quantity range across years). The suggested
+price is then already in estimate-year dollars, so YEAR = the estimate year; the MDOT columns show which years
+were combined and REMARKS says so. If 10 years still show only one project, the item keeps that price with
+"CHECK: only one MDOT project in 10 years of bids - use judgment".
+
 Suggested price rules (`suggest()` in `build_opcc.py`):
 - Normal items use a line from (min qty, high price) to (max qty, low price), with quantity on a log scale.
   - At or below min qty: high price. At or above max qty: low price.
