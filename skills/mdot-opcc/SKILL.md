@@ -99,7 +99,11 @@ were combined and REMARKS says so. If 10 years still show only one project, the 
 
 Suggested price rules (`suggest()` in `build_opcc.py`):
 - Normal items use a line from (min qty, high price) to (max qty, low price), with quantity on a log scale.
-  - At or below min qty: high price. At or above max qty: low price.
+  - At or below min qty: high price.
+  - At or above max qty (bigger than any MDOT job in the range): the MIDPOINT of MDOT's low and average price.
+    MDOT's "low" is the single lowest bid on any job, so using it alone pinned large quantities to one aggressive
+    bid (tested on four jobs: the midpoint cut the miss against the engineer's prices on these lines from $40.6M to
+    $24.3M).
   - When MDOT's min qty = max qty (one project): the average price.
 - If high > 10× low (usually penny or unbalanced bids): the average price, with "CHECK: wide MDOT price range"
   in REMARKS.

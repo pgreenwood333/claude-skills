@@ -102,7 +102,10 @@ def _suggest_core(item: dict, rec: dict | None) -> dict:
     if qty <= qmin:
         return {"price": round(hi, 2), "year": year, "method": "At/below min qty -> high", "flag": None}
     if qty >= qmax:
-        return {"price": round(lo, 2), "year": year, "method": "At/above max qty -> low", "flag": None}
+        # Beyond MDOT's largest job: MDOT's "low" is the single lowest bid anywhere, so use the midpoint of the
+        # low and the average (keeps a volume discount without pinning big jobs to one aggressive bid).
+        return {"price": round((lo + avg) / 2, 2), "year": year, "method": "At/above max qty -> midpoint of low & avg",
+                "flag": None}
     t = (math.log(qty) - math.log(qmin)) / (math.log(qmax) - math.log(qmin))
     return {"price": round(hi + t * (lo - hi), 2), "year": year, "method": "Qty line (log)", "flag": None}
 
