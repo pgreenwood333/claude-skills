@@ -52,15 +52,16 @@ python3 $S/build_opcc.py opcc_work/sq.json --project "<name>" --fa "<FA no>" --b
 Add `--refresh` to force fresh MDOT downloads (otherwise ranges ending today are reused for 7 days).
 
 What it writes, one tab per bid section, in the firm's OPCC layout:
-- **Columns C–J:** PAY ITEM NO., PAY ITEM, UNIT, QTY, UNIT PRICE, TOTAL, % OF ITEMS, REMARKS.
+- **Columns C–I and L:** PAY ITEM NO., PAY ITEM, UNIT, QTY, UNIT PRICE, TOTAL, % OF ITEMS, then a blank
+  two-column gap (J:K), then REMARKS in L.
   TOTAL ITEMS COST is in G4, followed by SUB-TOTAL, Contingencies and TOTAL rows.
-- **Columns L–O + Q–R:** the inflation block. YEAR = price year, INITIAL COST = suggested price.
+- **Columns N–Q + S–T:** the inflation block. YEAR = price year, INITIAL COST = suggested price.
   Inflation is 8%/yr from 2020 and 3%/yr before 2020, up to the estimate year. UNIT PRICE = the inflated price.
-- **Columns T–AC:** MDOT bid data used, with the exact MDOT values: search range, price year, min/max/avg
+- **Columns V–AE:** MDOT bid data used, with the exact MDOT values: search range, price year, min/max/avg
   quantity, low/avg/high price, suggested price before inflation, and the method used.
 - **Percentage items** (Clearing & Grubbing 201-B001, MOT 907-618-A001, Mobilization 620-A001,
   Construction Stakes 699-A001, and the Contingency row): 5% each, with a dropdown in column I to change it.
-  They are a % of TOTAL ITEMS COST (Contingency is a % of SUB-TOTAL). A hidden column K keeps this from
+  They are a % of TOTAL ITEMS COST (Contingency is a % of SUB-TOTAL). A hidden column M keeps this from
   becoming a circular reference.
 
 Suggested price rules (`suggest()` in `build_opcc.py`):
@@ -70,7 +71,7 @@ Suggested price rules (`suggest()` in `build_opcc.py`):
 - If high > 10× low (usually penny or unbalanced bids): the average price, with "CHECK: wide MDOT price range"
   in REMARKS.
 - Only one bid price: that price, with "CHECK: only one MDOT bid price".
-- **Left blank for the engineer** (yellow cells L/M, reason in REMARKS):
+- **Left blank for the engineer** (yellow cells N/O, reason in REMARKS):
   - Per Plans items (`-PP`)
   - no MDOT price found
   - unit on the SQ differs from MDOT's unit
@@ -95,4 +96,4 @@ Say plainly that the prices are a starting point from MDOT bid history; the engi
 - Never edit the user's SQ; write the OPCC next to it (or where they say).
 - If MDOT's description differs from the SQ, keep the SQ wording and note "MDOT: ..." in REMARKS.
 - Revisions (a different %, a different price, re-run with a newer SQ): rebuild with the script. For a single
-  price, the user can type over column M (INITIAL COST) and L (YEAR) themselves.
+  price, the user can type over column O (INITIAL COST) and N (YEAR) themselves.

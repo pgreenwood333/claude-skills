@@ -3,9 +3,9 @@
 
 Input: the JSON from read_sq.py. Prices come from mdot_bid_prices.lookup().
 Layout follows the firm's OPCC sheet (one tab per bid section):
-  C PAY ITEM NO. | D PAY ITEM | E UNIT | F QTY | G UNIT PRICE | H TOTAL | I % | J REMARKS
-  L YEAR | M INITIAL COST | N COST IN 2020 | O ESTIMATE YR   (inflation, Q4:R6 rates)
-  T..AC  MDOT bid data used (range, price year, quantities, low/avg/high, suggested, method)
+  C PAY ITEM NO. | D PAY ITEM | E UNIT | F QTY | G UNIT PRICE | H TOTAL | I % | (J:K gap) | L REMARKS
+  N YEAR | O INITIAL COST | P COST IN 2020 | Q ESTIMATE YR   (inflation, S4:T6 rates)
+  V..AE  MDOT bid data used (range, price year, quantities, low/avg/high, suggested, method)
 
 Usage:
   build_opcc.py sq.json --project "Lakeland Drive Pedestrian Bridge" --fa "STBG-9999-05(413)" \
@@ -100,31 +100,31 @@ def write_sheet(wb, sec, prices, meta, pct_ref):
     ws["G2"].number_format = "m/d/yyyy"
     ws["D3"] = f"{meta['county']} COUNTY" if meta["county"] else ""
     ws["E3"] = "UPDATED BY:"; ws["G3"] = meta["by"]
-    ws["L3"] = "ENTER YEAR & COST"
+    ws["N3"] = "ENTER YEAR & COST"
     ws["D4"] = f"{meta['job_slash']}  {meta['fa']}".strip()
     ws["E4"] = "TOTAL ITEMS COST:"
-    ws["Q4"] = "UNIT PRICE INFLATION"
+    ws["S4"] = "UNIT PRICE INFLATION"
     heads = {"C": "PAY ITEM NO.", "D": "PAY ITEM", "E": "UNIT", "F": "QTY", "G": "UNIT PRICE", "H": "TOTAL",
-             "I": "% OF ITEMS", "J": "REMARKS", "L": "INFLATION", "N": "COST IN YR", "O": "ESTIMATE YR",
-             "Q": "2020 - 2025 @", "R": 0.08}
+             "I": "% OF ITEMS", "L": "REMARKS", "N": "INFLATION", "P": "COST IN YR", "Q": "ESTIMATE YR",
+             "S": "2020 - 2025 @", "T": 0.08}
     for c, v in heads.items():
         ws[f"{c}5"] = v
-    ws["L6"], ws["M6"], ws["N6"], ws["O6"] = "YEAR", "INITIAL COST", 2020, est_year
-    ws["Q6"], ws["R6"] = "BEFORE 2020 @", 0.03
-    ws["R5"].number_format = ws["R6"].number_format = "0%"
+    ws["N6"], ws["O6"], ws["P6"], ws["Q6"] = "YEAR", "INITIAL COST", 2020, est_year
+    ws["S6"], ws["T6"] = "BEFORE 2020 @", 0.03
+    ws["T5"].number_format = ws["T6"].number_format = "0%"
     # MDOT block
-    ws["T3"] = (f"MDOT ITEM BID PRICES - aashtoreports.mdot.ms.gov BidPrices report, downloaded "
+    ws["V3"] = (f"MDOT ITEM BID PRICES - aashtoreports.mdot.ms.gov BidPrices report, downloaded "
                 f"{meta['downloaded']}. Exact values as published by MDOT.")
-    ws["T3"].font = Font(italic=True, size=9)
+    ws["V3"].font = Font(italic=True, size=9)
     mdot_heads = ["SEARCH RANGE", "PRICE YEAR", "MIN QTY", "MAX QTY", "AVG QTY", "LOW PRICE", "AVG PRICE",
                   "HIGH PRICE", "SUGGESTED (BEFORE INFLATION)", "METHOD"]
-    ws["T4"] = "MDOT BID DATA USED"; ws["T4"].font = BOLD
+    ws["V4"] = "MDOT BID DATA USED"; ws["V4"].font = BOLD
     for i, h in enumerate(mdot_heads):
-        ws.cell(5, 20 + i, h)
+        ws.cell(5, 22 + i, h)
     for row in (5, 6):
-        for col in list(range(3, 11)) + list(range(12, 16)) + list(range(20, 30)):
+        for col in list(range(3, 10)) + [12] + list(range(14, 18)) + list(range(22, 32)):
             c = ws.cell(row, col); c.font = BOLD; c.alignment = CENTER; c.fill = HEAD_FILL; c.border = BOX
-    ws.merge_cells("L5:M5")
+    ws.merge_cells("N5:O5")
 
     first = 7
     r = first
@@ -142,19 +142,19 @@ def write_sheet(wb, sec, prices, meta, pct_ref):
             ws[f"I{r}"].number_format = "0%"; ws[f"I{r}"].fill = INPUT_FILL
             ws[f"H{r}"] = f"=ROUNDUP(I{r}*$G$4,0)"
             ws[f"G{r}"] = f"=IF(F{r}>0,H{r}/F{r},H{r})"
-            ws[f"J{r}"] = f'=TEXT(I{r},"0%")&" OF TOTAL ITEMS COST"'
+            ws[f"L{r}"] = f'=TEXT(I{r},"0%")&" OF TOTAL ITEMS COST"'
         else:
             if s["price"] is not None:
-                ws[f"L{r}"], ws[f"M{r}"] = s["year"], s["price"]
+                ws[f"N{r}"], ws[f"O{r}"] = s["year"], s["price"]
             else:
-                ws[f"L{r}"].fill = ws[f"M{r}"].fill = INPUT_FILL
+                ws[f"N{r}"].fill = ws[f"O{r}"].fill = INPUT_FILL
                 flagged.append((code, it["description"], s["flag"]))
-            ws[f"N{r}"] = f'=IF(AND(L{r}<>"",L{r}<$N$6),M{r}*(1+$R$6)^($N$6-L{r}),"")'
-            ws[f"O{r}"] = (f'=IF(OR(L{r}="",M{r}=""),"",ROUND(IF(L{r}<$N$6,N{r}*(1+$R$5)^($O$6-$N$6),'
-                           f'M{r}*(1+$R$5)^($O$6-L{r})),2))')
-            ws[f"G{r}"] = f'=IF(O{r}="","",O{r})'
+            ws[f"P{r}"] = f'=IF(AND(N{r}<>"",N{r}<$P$6),O{r}*(1+$T$6)^($P$6-N{r}),"")'
+            ws[f"Q{r}"] = (f'=IF(OR(N{r}="",O{r}=""),"",ROUND(IF(N{r}<$P$6,P{r}*(1+$T$5)^($Q$6-$P$6),'
+                           f'O{r}*(1+$T$5)^($Q$6-N{r})),2))')
+            ws[f"G{r}"] = f'=IF(Q{r}="","",Q{r})'
             ws[f"H{r}"] = f'=IF(G{r}="","",F{r}*G{r})'
-            ws[f"K{r}"] = f"=N(H{r})"  # hidden helper: items cost without the % rows (avoids a circular ref)
+            ws[f"M{r}"] = f"=N(H{r})"  # hidden helper: items cost without the % rows (avoids a circular ref)
             notes = []
             if s["flag"]:
                 notes.append(s["flag"])
@@ -164,7 +164,7 @@ def write_sheet(wb, sec, prices, meta, pct_ref):
             if rec and rec.get("found") and rec.get("description") and \
                     rec["description"].strip().lower() != it["description"].strip().lower():
                 notes.append(f"MDOT: {rec['description']}")
-            ws[f"J{r}"] = "; ".join(notes) or None
+            ws[f"L{r}"] = "; ".join(notes) or None
         # MDOT data block (exact values)
         if rec and rec.get("found"):
             vals = [rec["range"], rec["price_year"], rec["min_qty"], rec["max_qty"], rec["avg_qty"],
@@ -175,26 +175,26 @@ def write_sheet(wb, sec, prices, meta, pct_ref):
         if s.get("percent") and rec and rec.get("found"):
             vals[-1] = "% of total items cost (MDOT data for reference only)"
         for i, v in enumerate(vals):
-            c = ws.cell(r, 20 + i, v); c.fill = DATA_FILL; c.border = BOX
-            if 22 <= 20 + i <= 24:
+            c = ws.cell(r, 22 + i, v); c.fill = DATA_FILL; c.border = BOX
+            if 2 <= i <= 4:
                 c.number_format = QTYF
-            elif 25 <= 20 + i <= 28:
+            elif 5 <= i <= 8:
                 c.number_format = MONEY
-        for col in list(range(3, 11)) + list(range(12, 16)):
+        for col in list(range(3, 10)) + [12] + list(range(14, 18)):
             ws.cell(r, col).border = BOX
         r += 1
     last = r - 1
 
     # totals
-    ws["G4"] = f"=SUM(K{first}:K{last})"
-    ws.column_dimensions["K"].hidden = True
+    ws["G4"] = f"=SUM(M{first}:M{last})"
+    ws.column_dimensions["M"].hidden = True
     ws["G4"].number_format = MONEY0; ws["G4"].font = BOLD
     sub, cont, tot = r + 1, r + 3, r + 5
     ws[f"C{sub}"] = "SUB-TOTAL"; ws[f"H{sub}"] = f"=SUM(H{first}:H{last})"
     ws[f"D{cont}"] = "Contingencies"; ws[f"E{cont}"] = "LS"; ws[f"F{cont}"] = 1
     ws[f"I{cont}"] = DEFAULT_PCT; ws[f"I{cont}"].number_format = "0%"; ws[f"I{cont}"].fill = INPUT_FILL
     ws[f"H{cont}"] = f"=ROUNDUP(I{cont}*H{sub},0)"; ws[f"G{cont}"] = f"=H{cont}"
-    ws[f"J{cont}"] = f'=TEXT(I{cont},"0%")&" OF SUB-TOTAL"'
+    ws[f"L{cont}"] = f'=TEXT(I{cont},"0%")&" OF SUB-TOTAL"'
     ws[f"C{tot}"] = "TOTAL"; ws[f"H{tot}"] = f"=H{sub}+H{cont}"
     for rr in (sub, cont, tot):
         ws[f"C{rr}"].font = ws[f"H{rr}"].font = BOLD
@@ -214,20 +214,21 @@ def write_sheet(wb, sec, prices, meta, pct_ref):
         ws[f"F{rr}"].number_format = QTYF
         ws[f"G{rr}"].number_format = MONEY
         ws[f"H{rr}"].number_format = MONEY
-        ws[f"M{rr}"].number_format = MONEY
-        ws[f"N{rr}"].number_format = MONEY
         ws[f"O{rr}"].number_format = MONEY
+        ws[f"P{rr}"].number_format = MONEY
+        ws[f"Q{rr}"].number_format = MONEY
         ws[f"E{rr}"].alignment = Alignment(horizontal="center")
-    widths = {"A": 2, "B": 2, "C": 15, "D": 48, "E": 7, "F": 10, "G": 13, "H": 15, "I": 9, "J": 40, "K": 2,
-              "L": 8, "M": 13, "N": 12, "O": 12, "P": 2, "Q": 15, "R": 7, "S": 3, "T": 23, "U": 8, "V": 10,
-              "W": 10, "X": 10, "Y": 12, "Z": 12, "AA": 13, "AB": 14, "AC": 34}
+    # J:K are a blank gap; M is the hidden helper column
+    widths = {"A": 2, "B": 2, "C": 15, "D": 48, "E": 7, "F": 10, "G": 13, "H": 15, "I": 9, "J": 9, "K": 9,
+              "L": 40, "M": 2, "N": 8, "O": 13, "P": 12, "Q": 12, "R": 2, "S": 15, "T": 7, "U": 3, "V": 23,
+              "W": 8, "X": 10, "Y": 10, "Z": 10, "AA": 12, "AB": 12, "AC": 13, "AD": 14, "AE": 34}
     for k, v in widths.items():
         ws.column_dimensions[k].width = v
     ws.freeze_panes = "E7"
     ws.sheet_view.zoomScale = 85
     ws.page_setup.orientation = "landscape"; ws.page_setup.fitToWidth = 1; ws.page_setup.fitToHeight = 0
     ws.sheet_properties.pageSetUpPr.fitToPage = True
-    ws.print_area = f"C1:J{tot}"
+    ws.print_area = f"C1:L{tot}"
     return flagged, checks
 
 
