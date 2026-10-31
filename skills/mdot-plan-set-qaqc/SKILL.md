@@ -117,7 +117,10 @@ python3 $S/markup_pdf.py "<plans.pdf>" qaqc_work/index qaqc_work/findings_review
 python3 $S/build_simple_report.py qaqc_work/findings_reviewed.json qaqc_work/index "<name>_QAQC.xlsx"
 ```
 The workbook is a plain punch list: one tab per check, one row per sheet (Spelling: Text Found / Correct To;
-others: What's Wrong / Fix / Priority), XX placeholders on their own tab, plus Your Call and Rejected tabs. If the
+others: What's Wrong / Fix / Priority), XX placeholders on their own tab, plus Your Call and Rejected tabs.
+Note Match is one row per flag, never duplicated: a profile-vs-XS flag lists both sheets in one row
+(Sheet ID(s) / PDF Page(s)), with a What Doesn't Match column ("Profile: …" / "XS: …", or "XS: cross-section note
+not found"). If the
 engineer wants the detailed version (evidence, locate, review notes), also run `build_report.py` with the same
 arguments into `<name>_QAQC_detail.xlsx`. Confirmed flags get a red highlight with the finding as the comment; any that cannot be located get a red sticky
 note on the sheet, so nothing is dropped (add `--include-uncertain` to mark those as well). Before delivering, render two

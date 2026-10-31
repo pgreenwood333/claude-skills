@@ -9,7 +9,10 @@ The rule (MDOT plan-profile sheets as printed):
 - **Black**: everything else, including proposed actions that refer to something existing: "TIE TO EXIST. ROW",
   "REMOVE EXIST. PIPE" are proposed work and print black (blue if the work itself is drainage, e.g.
   "CONNECT TO EXIST. INLET"). Ditch grades and their station/elevation callouts in the profile
-  ("-4.79% LT DITCH GRADE", "RT 112+75.00 EL 283.00") print black. Roadway grades, VPI/VPC data, earthwork, erosion control (silt basins), ROW and
+  ("-4.79% LT DITCH GRADE", "RT 112+75.00 EL 283.00") print black. Driveway notes in the profile ("STA. 148+78.00 RT." / "16' DRIVE REQ'D." /
+  "40'-18\" ALT. PIPE REQ'D.") print entirely black, pipe line included, even though the pipe is proposed
+  drainage; the matching driveway pipe label in the plan view ("40' - XX\" ALT REQ'D.") prints blue. Never ask
+  for part of a driveway note to be blue. Roadway grades, VPI/VPC data, earthwork, erosion control (silt basins), ROW and
   easement acquisition (TEMPORARY EASEMENT REQ'D) are black.
 Read `qaqc_memory/lessons.md` (section "color") before starting if the orchestrator gives you one; those are the
 engineer's past corrections and they override the defaults above.

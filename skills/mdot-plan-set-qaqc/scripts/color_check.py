@@ -18,6 +18,8 @@ Rules applied (these produce CANDIDATES for the agent to judge, not findings)
   DITCH_NOT_BLACK    ditch grade label not black (ditch grades print black in the profile)
   BLUE_NO_DRAIN      blue note with no drainage words (includes blue ditch station/elevation callouts)
   Purple labels with no proposed wording (PBOX, POLE, MH, BENCH, gas line) are survey items and are not flagged.
+  DRIVE_NOT_BLACK    a driveway note (has a DRIVE line) is not all black; driveway notes print black, pipe line
+                     included (the plan view's driveway pipe label prints blue)
   MIXED              one note printed in more than one color          (part of the note on the wrong level)
   ODD_COLOR          text in a color that is not black, blue or purple
 Output: <out>/color_candidates.json (candidates + per-sheet color counts + every note with its color), a crop per
@@ -43,6 +45,7 @@ STRUCT = re.compile(r"^\[\s*\d+\s*[A-Z]?\s*\]?$|^\d+(\.\d+)?' / \d+(\.\d+)?' / \
 # a blue note is only judged when it has real words (bare stations/elevations are pieces of a drainage note)
 WORDY = re.compile(r"\b(?!STA\b|EL\b|LT\b|RT\b|INV\b|TOP\b)[A-Z]{3,}\b")
 # ditch grades print BLACK in the profile (engineer's rule), and so do their station/elevation callouts
+DRIVE = re.compile(r"\bDRIVE REQ", re.I)   # a driveway note, not a street name ("TRUMAN DRIVE")
 DITCH = re.compile(r"\bDITCH GRADE\b|\b(LT|RT) DITCH\b", re.I)
 CALLOUT = re.compile(r"^((LT|RT)\s*\d+\+\d+(\.\d+)?|EL\.?\s*\d+(\.\d+)?|[+-]?\d+(\.\d+)?%|NOTE:?|\s|/)+$", re.I)
 PROPOSED = re.compile(r"\b(REQ'?D|REQUIRED|PROP(OSED|\.)|TEMP(ORARY|\.)? (CONST(RUCTION|\.)? )?EASEMENT|"
@@ -130,11 +133,17 @@ def judge(note):
     cols = [l["color"] for l in note if l["color"]]
     main = Counter(cols).most_common(1)[0][0] if cols else None
     has_ex, has_act = bool(EXIST.search(text)), bool(ACTION.search(text))
-    has_dr = (bool(DRAIN.search(text)) or bool(STRUCT.match(text.strip()))) and not NOT_DRAIN.search(text) \
-        and len(note) <= 8
+    dr_words = (bool(DRAIN.search(text)) or bool(STRUCT.match(text.strip()))) and not NOT_DRAIN.search(text)
+    has_dr = dr_words and len(note) <= 8
     existing_item = has_ex and not has_act        # labels the existing thing itself
     proposed_words = bool(PROPOSED.search(text)) or (has_ex and has_act)
     rules = []
+    if DRIVE.search(text) and not re.search(r"OPENINGS|TOP\s*[=:]", text):
+        # driveway notes print entirely black, pipe line included ("40'-18\" ALT. PIPE REQ'D."); the plan
+        # view's driveway pipe label is still blue, but it has no DRIVE line so it is judged as drainage
+        if any(c not in ("black", "gray") for c in cols):
+            rules.append("DRIVE_NOT_BLACK")
+        return text, main, rules, has_ex, has_dr
     if len(set(c for c in cols if c != "gray")) > 1:
         rules.append("MIXED")
     if any(c == "other" for c in cols):
@@ -147,7 +156,7 @@ def judge(note):
         rules.append("DRAIN_BLACK")
     if DITCH.search(text) and main not in ("black", None):
         rules.append("DITCH_NOT_BLACK")
-    elif main == "blue" and not has_dr and WORDY.search(text):
+    elif main == "blue" and not dr_words and WORDY.search(text):
         rules.append("BLUE_NO_DRAIN")
     return text, main, rules, has_ex, has_dr
 

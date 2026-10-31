@@ -22,6 +22,11 @@ The engineer's rules:
 3. "No cross-section note found": confirm by searching the XS sheets (`search <index> "<ID>"` and the station). The
    XS note may be laid out differently; if it exists but was not read, compare it by eye line by line and report
    any difference yourself.
+   The check runs both ways: a profile note with no XS note, and an XS note (drainage structure or driveway)
+   with no profile note ("cross-section note ... has no matching profile note"). Proposed drainage and driveway
+   notes normally appear in both. Before keeping a reverse flag, look for the profile note: it may exist under a
+   typo'd ID (626 B for 262 B) or be overprinted so the script could not read it (then it belongs to the overlap
+   check, and the note-match flag points to that overlap finding instead).
 4. Text drawn as linework is invisible to the script: if a plan or XS sheet has no text layer for its notes
    (index flag LOW_TEXT_DENSITY_POSSIBLE_SHX_TEXT), do the comparison visually and say so.
 5. Every profile note with a pipe line gets a plan check, including station-headed notes (drives, junction boxes,

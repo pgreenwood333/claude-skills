@@ -281,6 +281,29 @@ def main():
                     "; ".join(diffs[:4]), "Make the profile and cross-section notes identical",
                     [dict(page=n["page"], rect=n["bbox"]), dict(page=x["page"], rect=x["bbox"])])
 
+        # ---- the other direction: a cross-section note (drainage structure or driveway) with no profile note.
+        # Proposed drainage and driveway notes normally appear on both the profile and the cross section.
+        XS_NOTE = re.compile(r"REQ'?D|EXIST\.?\s+PIPE|FLOWABLE", re.I)
+        prof_sids = {n["sid"] for n in prof if n["sid"]}
+        seen = set()
+        for x in xsn:
+            if not x["lines"] or not XS_NOTE.search(" ".join(x["lines"])):
+                continue
+            if x["sid"]:
+                matched = x["sid"] in prof_sids
+            else:   # station-headed note (driveway, JB, culvert): any profile note within 1 ft
+                matched = any(abs(n["sta"] - x["sta"]) <= 1.0 for n in prof)
+            key = (x["sid"] or norm(x["lines"][0]), round(x["sta"], 1))
+            if matched or key in seen:
+                continue
+            seen.add(key)
+            xsh = sheet.get(x["page"], f"p{x['page']}")
+            label = x["sid"] or norm(x["lines"][0])
+            checks.append(dict(kind="xs_reverse", id=label, page=x["page"], result="no profile note"))
+            add("medium", [xsh], [x["page"]], f"{label}: cross-section note on {xsh} has no matching profile note",
+                " | ".join(x["lines"][:3]), "Add the note to the profile (or remove it from the cross section)",
+                [dict(page=x["page"], rect=x["bbox"])])
+
     # same structure ID used for different structures (different stations)
     for sid_, ns in by_id.items():
         stas = sorted({round(n["sta"], 2) for n in ns})
@@ -298,6 +321,7 @@ def main():
     summary = dict(profile_notes=len(prof), wk_pages=len(set(wk)), xs_pages=len(set(xs)),
                    plan_checks=sum(c["kind"] == "plan" for c in checks),
                    plan_mismatches=sum(c["kind"] == "plan" and c["result"] != "match" for c in checks),
+                   xs_without_profile=sum(c["kind"] == "xs_reverse" for c in checks),
                    xs_checks=sum(c["kind"] == "xs" for c in checks),
                    xs_mismatches=sum(c["kind"] == "xs" and c["result"] != "match" for c in checks))
     json.dump(dict(summary=summary, findings=F, checks=checks, profile_notes=prof),

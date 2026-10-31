@@ -6,10 +6,10 @@
 Tabs: Summary (counts), then one tab per check that ran:
   Spelling          Sheet ID | PDF Page | Text Found | Correct To | Status | Notes
   Placeholders (XX) unfilled XX values pulled out of spelling, same columns as the other checks
-  Note Match        Sheet ID | PDF Page | What's Wrong | What Doesn't Match | Fix | Priority | Status
+  Note Match        Sheet ID(s) | PDF Page(s) | What's Wrong | What Doesn't Match | Fix | Priority | Status
   every other check Sheet ID | PDF Page | What's Wrong | Fix | Priority | Status
 plus "Your Call" (flags the engineer decides) and "Rejected" (dismissed on review, kept for the record).
-A flag that covers several sheets gets one row per sheet, like a punch list. Rows sort by sheet order.
+A flag that covers several sheets gets one row per sheet, like a punch list (Note Match: one row per flag, all its sheets listed). Rows sort by sheet order.
 build_report.py still makes the detailed workbook (evidence, locate, review notes) when someone wants it.
 """
 import json, os, re, sys
@@ -126,13 +126,17 @@ def main():
         for f in ft:
             pri = PRIORITY.get(f.get("severity"), "")
             quotes = QUOTE.findall(f.get("evidence", ""))
+            if t == "notematch":   # one row per flag: a profile-vs-XS flag names both sheets in one row
+                rf = rows_for(f, sid_by_page)
+                sids = ", ".join(dict.fromkeys(s_ for s_, _ in rf if s_))
+                pgs = [p_ for _, p_ in rf if isinstance(p_, int)]
+                rows.append([sids, ", ".join(map(str, pgs)), short(f.get("finding")), mismatch(f.get("evidence")),
+                             short(f.get("suggested_fix"), 160), pri, status(f), min(pgs) if pgs else 9999])
+                continue
             for sid, pg in rows_for(f, sid_by_page):
                 if t == "spelling":
                     rows.append([sid, pg, quotes[0] if quotes else short(f.get("evidence"), 80),
                                  short(f.get("suggested_fix"), 120), status(f), short(f.get("finding"), 160)])
-                elif t == "notematch":
-                    rows.append([sid, pg, short(f.get("finding")), mismatch(f.get("evidence")),
-                                 short(f.get("suggested_fix"), 160), pri, status(f)])
                 else:
                     rows.append([sid, pg, short(f.get("finding")), short(f.get("suggested_fix"), 160), pri, status(f)])
         if t == "spelling":
@@ -140,9 +144,10 @@ def main():
             table(wb, name, ["Sheet ID", "PDF Page", "Text Found", "Correct To", "Status", "Notes"], rows,
                   [12, 9, 34, 34, 12, 60])
         elif t == "notematch":
-            rows.sort(key=lambda r: (order.get(r[5], 3), r[1] if isinstance(r[1], int) else 9999))
-            table(wb, name, ["Sheet ID", "PDF Page", "What's Wrong", "What Doesn't Match", "Fix", "Priority", "Status"],
-                  rows, [12, 9, 60, 55, 40, 10, 12])
+            rows.sort(key=lambda r: (order.get(r[5], 3), r[7]))
+            rows = [r[:7] for r in rows]
+            table(wb, name, ["Sheet ID(s)", "PDF Page(s)", "What's Wrong", "What Doesn't Match", "Fix", "Priority", "Status"],
+                  rows, [18, 11, 60, 55, 40, 10, 12])
         else:
             rows.sort(key=lambda r: (order.get(r[4], 3), r[1] if isinstance(r[1], int) else 9999))
             table(wb, name, ["Sheet ID", "PDF Page", "What's Wrong", "Fix", "Priority", "Status"], rows,
