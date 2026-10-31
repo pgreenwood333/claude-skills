@@ -120,7 +120,9 @@ The workbook is a plain punch list: one tab per check, one row per sheet (Spelli
 others: What's Wrong / Fix / Priority), XX placeholders on their own tab, plus Your Call and Rejected tabs.
 Note Match is one row per flag, never duplicated: a profile-vs-XS flag lists both sheets in one row
 (Sheet ID(s) / PDF Page(s)), with a What Doesn't Match column ("Profile: …" / "XS: …", or "XS: cross-section note
-not found"). If the
+not found"). Every row on a check tab ends with a Review dropdown that colors the row: Correct (green, fixed on the
+plans), Incorrect (red, still to fix; every row starts here) or N/A (orange, the flag was wrong and there is
+nothing to fix). A hidden Flag ID column ties each row back to its finding. If the
 engineer wants the detailed version (evidence, locate, review notes), also run `build_report.py` with the same
 arguments into `<name>_QAQC_detail.xlsx`. Confirmed flags get a red highlight with the finding as the comment; any that cannot be located get a red sticky
 note on the sheet, so nothing is dropped (add `--include-uncertain` to mark those as well). Before delivering, render two
@@ -140,6 +142,10 @@ python3 $S/learn.py record qaqc_work <qaqc_memory> --plan-set "<pdf name>"
 This logs every flag with the grader's and your verdict. Tell the user the run ID it prints and that they can
 correct any flag later ("SPL-005 was wrong, that's the street's real name"; "you missed X on WK-4"). When they do:
 `learn.py feedback <qaqc_memory> <run_id> <id> confirmed|rejected|missed "<their words>" [--task <task>]`.
+When they send the workbook back with the Review column filled in, read it in:
+`learn.py ingest <returned.xlsx> <qaqc_memory> <run_id> --work qaqc_work`. N/A rows are recorded as wrong flags
+(rejected), Correct rows as confirmed, and every answer is saved on its finding so a rebuilt workbook keeps it.
+Ask about any N/A row whose reason is not obvious, and tell them how many of each it read.
 Then run `learn.py lessons <qaqc_memory>`. It proposes a lesson only when the same pattern repeats in 2 or more runs
 (one bad call is not a pattern). Show the proposals to the user and add only the ones they approve, written as a rule
 the agents can follow: `learn.py accept <qaqc_memory> <task> "<rule>"`. Never add a lesson they did not approve.

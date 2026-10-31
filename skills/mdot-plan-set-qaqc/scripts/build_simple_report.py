@@ -9,6 +9,10 @@ Tabs: Summary (counts), then one tab per check that ran:
   Note Match        Sheet ID(s) | PDF Page(s) | What's Wrong | What Doesn't Match | Fix | Priority | Status
   every other check Sheet ID | PDF Page | What's Wrong | Fix | Priority | Status
 plus "Your Call" (flags the engineer decides) and "Rejected" (dismissed on review, kept for the record).
+Every row on a check tab ends with a Review dropdown: Correct (row turns green: fixed on the plans), Incorrect
+(red: still to fix; the default) or N/A (orange: the flag was wrong, nothing to fix). A hidden Flag ID column lets
+`learn.py ingest` read a returned workbook so N/A rows teach the checks. A finding's `engineer_review` field
+pre-sets its dropdown (carry the engineer's earlier answers forward).
 A flag that covers several sheets gets one row per sheet, like a punch list (Note Match: one row per flag, all its sheets listed). Rows sort by sheet order.
 build_report.py still makes the detailed workbook (evidence, locate, review notes) when someone wants it.
 """
@@ -16,6 +20,8 @@ import json, os, re, sys
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
+from openpyxl.worksheet.datavalidation import DataValidation
+from openpyxl.formatting.rule import FormulaRule
 
 PLACEHOLDER = re.compile(r"\bXX\b|placeholder", re.I)
 TASKS = [("index", "Sheet Order"), ("spelling", "Spelling"), ("placeholder", "Placeholders (XX)"), ("notematch", "Note Match"),
@@ -66,7 +72,18 @@ def short(text, n=220):
     return text if len(text) <= n else text[:n - 1].rstrip() + "…"
 
 
-def table(wb, title, headers, rows, widths):
+# Engineer's review of each row: Correct = fixed on the plans, Incorrect = still to fix (the default),
+# N/A = the flag was wrong, nothing to fix (read back by learn.py ingest so the checks learn from it).
+REVIEW = {"Correct": "00B050", "Incorrect": "E06666", "N/A": "F6B26B"}
+
+
+def table(wb, title, headers, rows, widths, review=False):
+    """review=True: each row ends with its flag id; adds a Review dropdown (row color follows it) and a hidden
+    Flag ID column so a returned workbook can be read back."""
+    if review:
+        headers = headers + ["Review", "Flag ID"]
+        widths = widths + [12, 10]
+        rows = [r[:-1] + [r[-1].get("review", "Incorrect"), r[-1]["id"]] for r in rows]
     ws = wb.create_sheet(title)
     ws.append(headers)
     for c in ws[1]:
@@ -84,6 +101,18 @@ def table(wb, title, headers, rows, widths):
                 c.fill = PatternFill("solid", fgColor=FILL[c.value])
     ws.freeze_panes = "A2"
     ws.auto_filter.ref = ws.dimensions
+    if review and rows:
+        last = len(rows) + 1
+        rc = get_column_letter(len(headers) - 1)
+        dv = DataValidation(type="list", formula1='"Correct,Incorrect,N/A"', allow_blank=False,
+                            showErrorMessage=True, errorTitle="Review", error="Pick Correct, Incorrect or N/A")
+        ws.add_data_validation(dv)
+        dv.add(f"{rc}2:{rc}{last}")
+        span = f"A2:{rc}{last}"
+        for val, color in REVIEW.items():
+            ws.conditional_formatting.add(span, FormulaRule(formula=[f'${rc}2="{val}"'], stopIfTrue=True,
+                                                            fill=PatternFill("solid", fgColor=color, bgColor=color)))
+        ws.column_dimensions[get_column_letter(len(headers))].hidden = True
     return ws
 
 
@@ -126,32 +155,34 @@ def main():
         for f in ft:
             pri = PRIORITY.get(f.get("severity"), "")
             quotes = QUOTE.findall(f.get("evidence", ""))
+            tag = dict(id=f["id"], review=f.get("engineer_review") or "Incorrect")
             if t == "notematch":   # one row per flag: a profile-vs-XS flag names both sheets in one row
                 rf = rows_for(f, sid_by_page)
                 sids = ", ".join(dict.fromkeys(s_ for s_, _ in rf if s_))
                 pgs = [p_ for _, p_ in rf if isinstance(p_, int)]
                 rows.append([sids, ", ".join(map(str, pgs)), short(f.get("finding")), mismatch(f.get("evidence")),
-                             short(f.get("suggested_fix"), 160), pri, status(f), min(pgs) if pgs else 9999])
+                             short(f.get("suggested_fix"), 160), pri, status(f), min(pgs) if pgs else 9999, tag])
                 continue
             for sid, pg in rows_for(f, sid_by_page):
                 if t == "spelling":
                     rows.append([sid, pg, quotes[0] if quotes else short(f.get("evidence"), 80),
-                                 short(f.get("suggested_fix"), 120), status(f), short(f.get("finding"), 160)])
+                                 short(f.get("suggested_fix"), 120), status(f), short(f.get("finding"), 160), tag])
                 else:
-                    rows.append([sid, pg, short(f.get("finding")), short(f.get("suggested_fix"), 160), pri, status(f)])
+                    rows.append([sid, pg, short(f.get("finding")), short(f.get("suggested_fix"), 160), pri, status(f),
+                                 tag])
         if t == "spelling":
             rows.sort(key=lambda r: (r[1] if isinstance(r[1], int) else 9999))
             table(wb, name, ["Sheet ID", "PDF Page", "Text Found", "Correct To", "Status", "Notes"], rows,
-                  [12, 9, 34, 34, 12, 60])
+                  [12, 9, 34, 34, 12, 60], review=True)
         elif t == "notematch":
             rows.sort(key=lambda r: (order.get(r[5], 3), r[7]))
-            rows = [r[:7] for r in rows]
+            rows = [r[:7] + [r[8]] for r in rows]
             table(wb, name, ["Sheet ID(s)", "PDF Page(s)", "What's Wrong", "What Doesn't Match", "Fix", "Priority", "Status"],
-                  rows, [18, 11, 60, 55, 40, 10, 12])
+                  rows, [18, 11, 60, 55, 40, 10, 12], review=True)
         else:
             rows.sort(key=lambda r: (order.get(r[4], 3), r[1] if isinstance(r[1], int) else 9999))
             table(wb, name, ["Sheet ID", "PDF Page", "What's Wrong", "Fix", "Priority", "Status"], rows,
-                  [12, 9, 70, 48, 10, 12])
+                  [12, 9, 70, 48, 10, 12], review=True)
     for label, want in (("Your Call", "Your call"), ("Rejected", "Rejected")):
         rows = []
         for f in findings:

@@ -6,6 +6,11 @@
   learn.py lessons  <memory_dir>                                  candidate lessons to show the engineer
   learn.py accept   <memory_dir> <task> "<lesson text>"           engineer approved: add to lessons.md
   learn.py stats    <memory_dir>                                  precision per check over time
+  learn.py ingest   <returned.xlsx> <memory_dir> <run_id> [--work <work_dir>]
+                    read the engineer's Review dropdowns from a returned workbook: N/A = the flag was wrong
+                    (recorded as rejected, so lessons can be proposed), Correct = fixed (confirmed), Incorrect =
+                    still open (nothing recorded). With --work, also saves each answer on the finding
+                    (`engineer_review`) so a rebuilt workbook keeps the engineer's choices.
 
 Files in <memory_dir> (keep it with the user's plan-set folders, never inside the skill):
   ledger.jsonl  one line per flag per run: run, task, rule/keywords, grader verdict, engineer verdict, notes
@@ -19,6 +24,8 @@ import datetime, json, os, re, sys
 from collections import Counter, defaultdict
 
 CAP = 12
+TASK_BY_PREFIX = {"SPL": "spelling", "NM": "notematch", "OVL": "overlap", "COL": "color", "IDX": "index",
+                  "QTY": "quantity", "ORD": "index"}
 
 
 def ledger(mem):
@@ -62,7 +69,7 @@ def cmd_record(work, mem, name=None):
     print(json.dumps(dict(run=run, rows=len(rows)), indent=1))
 
 
-def cmd_feedback(mem, run, fid, verdict, note, task=None):
+def cmd_feedback(mem, run, fid, verdict, note, task=None, quiet=False):
     rows = ledger(mem)
     hit = [r for r in rows if r.get("run") == run and r.get("id") == fid]
     if hit:
@@ -73,9 +80,50 @@ def cmd_feedback(mem, run, fid, verdict, note, task=None):
             for r in rows:
                 f.write(json.dumps(r) + "\n")
     else:   # something the run missed entirely
-        append(mem, [dict(run=run, task=task, id=fid, verdict="missed", engineer=verdict, engineer_note=note,
+        append(mem, [dict(run=run, task=task or TASK_BY_PREFIX.get(fid.split("-")[0]), id=fid,
+                          verdict="missed" if verdict == "missed" else None, engineer=verdict, engineer_note=note,
                           keywords=[])])
-    print("recorded")
+    if not quiet:
+        print("recorded")
+
+
+def cmd_ingest(xlsx, mem, run, work=None):
+    import openpyxl
+    wb = openpyxl.load_workbook(xlsx, data_only=True)
+    answers = defaultdict(list)          # flag id -> [(tab, sheet id, answer, what was flagged)]
+    for ws in wb.worksheets:
+        head = [c.value for c in ws[1]]
+        if "Review" not in head or "Flag ID" not in head:
+            continue
+        ri, fi = head.index("Review"), head.index("Flag ID")
+        wi = next((i for i, h in enumerate(head) if h in ("What's Wrong", "Text Found")), 2)
+        for row in ws.iter_rows(min_row=2, values_only=True):
+            if row[fi]:
+                answers[row[fi]].append((ws.title, row[0], (row[ri] or "Incorrect").strip(), row[wi]))
+    counts = Counter()
+    for fid, rs in answers.items():
+        vals = {a for _, _, a, _ in rs}
+        if "N/A" in vals:
+            sheets = ", ".join(str(s) for _, s, a, _ in rs if a == "N/A")
+            cmd_feedback(mem, run, fid, "rejected", f"engineer marked N/A (nothing to fix) on {sheets}: {rs[0][3]}",
+                         task=None, quiet=True)
+            counts["N/A"] += 1
+        elif vals == {"Correct"}:
+            cmd_feedback(mem, run, fid, "confirmed", "engineer fixed it on the plans", task=None, quiet=True)
+            counts["Correct"] += 1
+        else:
+            counts["open"] += 1
+    if work:
+        p = os.path.join(work, "findings_reviewed.json")
+        data = json.load(open(p))
+        for f in data["findings"]:
+            rs = answers.get(f["id"])
+            if rs:
+                vals = {a for _, _, a, _ in rs}
+                f["engineer_review"] = "N/A" if "N/A" in vals else ("Correct" if vals == {"Correct"} else "Incorrect")
+        json.dump(data, open(p, "w"), indent=1)
+    print(json.dumps(dict(flags=len(answers), **counts), indent=1))
+    print("Next: `learn.py lessons` to see if the N/A answers point to a rule worth adding.")
 
 
 def final(r):
@@ -184,6 +232,11 @@ def main():
         cmd_lessons(rest[0])
     elif cmd == "accept":
         cmd_accept(*rest[:3])
+    elif cmd == "ingest":
+        work = None
+        if "--work" in rest:
+            i = rest.index("--work"); work = rest[i + 1]; rest = rest[:i] + rest[i + 2:]
+        cmd_ingest(rest[0], rest[1], rest[2], work)
     elif cmd == "stats":
         cmd_stats(rest[0])
     else:
