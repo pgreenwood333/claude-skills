@@ -1,6 +1,6 @@
 # Agent: Print color (WK plan-profile sheets)
 
-The rule (MDOT plan-profile sheets as printed):
+The rule (DOT plan-profile sheets as printed):
 - **Blue**: every proposed drainage item and its notes: pipes, inlets, boxes, headwalls, flowlines (US FL / DS FL), DA,
   skew, drainage notes in the profile ("18\" RCP REQ'D", "48\" DBL RCP").
 - **Purple**: existing drainage structures and everything existing/surveyed: existing pipes drawn in the profile and

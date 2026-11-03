@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Build an MDOT Opinion of Probable Construction Cost workbook.
+"""Build a DOT Opinion of Probable Construction Cost workbook.
 
-Input: the JSON from read_sq.py. Prices come from mdot_bid_prices.lookup().
+Input: the JSON from read_sq.py. Prices come from dot_bid_prices.lookup().
 Layout follows the firm's OPCC sheet (one tab per bid section):
   C PAY ITEM NO. | D PAY ITEM | E UNIT | F QTY | G UNIT PRICE | H TOTAL | I % OF ITEMS | J ALT. COUNTED |
   (K:L gap) | M REMARKS | O YEAR | P INITIAL COST | Q COST IN 2020 | R ESTIMATE YR (inflation, T4:U6 rates)
-  W..AF  MDOT bid data used (range, price year, quantities, low/avg/high, suggested, method)
+  W..AF  DOT bid data used (range, price year, quantities, low/avg/high, suggested, method)
 
 Usage:
   build_opcc.py sq.json --project "Lakeland Drive Pedestrian Bridge" --fa "STBG-9999-05(413)" \
@@ -26,7 +26,7 @@ from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.datavalidation import DataValidation
 
 sys.path.insert(0, str(Path(__file__).parent))
-import mdot_bid_prices as mbp  # noqa: E402
+import dot_bid_prices as mbp  # noqa: E402
 
 PERCENT_ITEMS = {  # pay item -> label used in REMARKS
     "201-A001": "Clearing and Grubbing (Lump Sum)",
@@ -39,7 +39,7 @@ DEFAULT_PCT = 0.05
 
 def is_percent_item(item: dict) -> bool:
     """MOT, Mobilization, Construction Stakes, and Clearing & Grubbing ONLY when paid by Lump Sum (201-A001).
-    Clearing & Grubbing by the Acre (201-B001) is priced from MDOT bids like any other item."""
+    Clearing & Grubbing by the Acre (201-B001) is priced from DOT bids like any other item."""
     if item["item"] in PERCENT_ITEMS:
         return True
     unit = item.get("unit", "").upper().replace(".", "")
@@ -62,11 +62,11 @@ def suggest(item: dict, rec: dict | None) -> dict:
         return res
     extra = None
     if rec.get("inflated"):
-        extra = (f"MDOT bids from {rec['years_used'][0]}-{rec['years_used'][-1]} combined (latest range had only "
+        extra = (f"DOT bids from {rec['years_used'][0]}-{rec['years_used'][-1]} combined (latest range had only "
                  f"one project); each year inflated to {rec['price_year']} before combining")
         res["method"] = f"{res['method']} [years {rec['years_used'][0]}-{rec['years_used'][-1]} combined]"
     elif rec.get("single_project"):
-        extra = "CHECK: only one MDOT project in 10 years of bids - use judgment"
+        extra = "CHECK: only one DOT project in 10 years of bids - use judgment"
     if extra:
         res["note"] = f"{res['note']}; {extra}" if res.get("note") else extra
     return res
@@ -78,11 +78,11 @@ def _suggest_core(item: dict, rec: dict | None) -> dict:
     if is_percent_item(item):
         return {"price": None, "year": None, "method": "% of total items cost", "flag": None, "percent": True}
     if not rec or not rec.get("found"):
-        return {"price": None, "year": None, "method": "Flagged", "flag": "No MDOT bid price found"}
+        return {"price": None, "year": None, "method": "Flagged", "flag": "No DOT bid price found"}
     sq_unit = UNITS.get(item["unit"].upper().replace(".", ""), item["unit"])
     if sq_unit.lower() != str(rec["unit"]).lower():
         return {"price": None, "year": None, "method": "Flagged",
-                "flag": f"Unit differs: SQ {item['unit']} vs MDOT {rec['unit']}"}
+                "flag": f"Unit differs: SQ {item['unit']} vs DOT {rec['unit']}"}
     lo, hi, avg = rec["low_price"], rec["high_price"], rec["avg_price"]
     qmin, qmax = rec["min_qty"], rec["max_qty"]
     year = rec["price_year"]
@@ -90,11 +90,11 @@ def _suggest_core(item: dict, rec: dict | None) -> dict:
         return {"price": None, "year": None, "method": "Flagged", "flag": "Per Plans item - use judgment"}
     if qmin == qmax and lo == hi:
         return {"price": round(avg, 2), "year": year, "method": "Only one bid price",
-                "flag": None, "note": "CHECK: only one MDOT bid price"}
+                "flag": None, "note": "CHECK: only one DOT bid price"}
     if lo and hi > WIDE_RANGE * lo:
         # Penny / unbalanced bids make the low end meaningless, so use the average instead of the qty line.
         return {"price": round(avg, 2), "year": year, "method": f"Wide range ({hi / lo:,.0f}x) -> avg",
-                "flag": None, "note": f"CHECK: wide MDOT price range (${lo:,.2f} - ${hi:,.2f}), used avg"}
+                "flag": None, "note": f"CHECK: wide DOT price range (${lo:,.2f} - ${hi:,.2f}), used avg"}
     if qty is None:
         return {"price": None, "year": None, "method": "Flagged", "flag": "No quantity on SQ"}
     if qmin == qmax:
@@ -102,7 +102,7 @@ def _suggest_core(item: dict, rec: dict | None) -> dict:
     if qty <= qmin:
         return {"price": round(hi, 2), "year": year, "method": "At/below min qty -> high", "flag": None}
     if qty >= qmax:
-        # Beyond MDOT's largest job: MDOT's "low" is the single lowest bid anywhere, so use the midpoint of the
+        # Beyond DOT's largest job: DOT's "low" is the single lowest bid anywhere, so use the midpoint of the
         # low and the average (keeps a volume discount without pinning big jobs to one aggressive bid).
         return {"price": round((lo + avg) / 2, 2), "year": year, "method": "At/above max qty -> midpoint of low & avg",
                 "flag": None}
@@ -111,9 +111,9 @@ def _suggest_core(item: dict, rec: dict | None) -> dict:
 
 
 def mark_alternates(items: list[dict], prices: dict) -> list[dict]:
-    """SQ "OR" groups (alt_of) stay as separate lines, each with its own MDOT price, like the firm's OPCC sheet:
+    """SQ "OR" groups (alt_of) stay as separate lines, each with its own DOT price, like the firm's OPCC sheet:
     every alternate is listed, only ONE is counted in the totals (the contractor bids one). The one counted at
-    first is the lowest suggested MDOT price (or the first listed if none has a price); a YES/NO dropdown on each
+    first is the lowest suggested DOT price (or the first listed if none has a price); a YES/NO dropdown on each
     alternate row lets the engineer switch it. Repeated pay items WITHOUT an "OR" row (e.g. roadway and bridge
     Structure Excavation) are not alternates: they stay separate and are all counted."""
     grouped = []
@@ -136,7 +136,7 @@ def mark_alternates(items: list[dict], prices: dict) -> list[dict]:
             y["alt_group"] = codes
             y["alt_counted"] = i == pick
             y["alt_note"] = (f"ALTERNATE ({codes}; contractor bids one): only the row marked YES counts in the "
-                             f"total" + ("; YES set on the lowest MDOT price" if withp and i == pick else ""))
+                             f"total" + ("; YES set on the lowest DOT price" if withp and i == pick else ""))
             result.append(y)
     return result
 
@@ -167,7 +167,7 @@ BOLD = Font(bold=True)
 HEAD_FILL = PatternFill("solid", fgColor="D9D9D9")
 INPUT_FILL = PatternFill("solid", fgColor="FFF2CC")   # cells the engineer is expected to fill
 PRIOR_FILL = PatternFill("solid", fgColor="E2EFDA")   # price carried over from the original OPCC
-DATA_FILL = PatternFill("solid", fgColor="EDF2F8")    # MDOT data block
+DATA_FILL = PatternFill("solid", fgColor="EDF2F8")    # DOT data block
 MONEY = '"$"#,##0.00'
 MONEY0 = '"$"#,##0'
 QTYF = '#,##0.##'
@@ -235,7 +235,7 @@ def write_sheet(wb, sec, prices, meta, pct_ref):
     """Layout (one tab per bid section):
       C PAY ITEM NO. | D PAY ITEM | E UNIT | F QTY | G UNIT PRICE | H TOTAL | I % OF ITEMS | J ALT. COUNTED |
       K:L blank gap | M REMARKS | N hidden helper | O YEAR | P INITIAL COST | Q COST IN 2020 | R ESTIMATE YR |
-      T:U inflation rates | W..AF MDOT bid data used.
+      T:U inflation rates | W..AF DOT bid data used.
     Every pay item row has the same formulas: a % picked in column I makes that line I x TOTAL ITEMS COST and
     overrides its unit price; blank I uses the unit price (YEAR / INITIAL COST, inflated). Alternates have YES/NO
     in J; only YES rows count. TOTAL ITEMS COST (G4) = the hidden helper N, which never reads G or H, so there is no
@@ -259,13 +259,13 @@ def write_sheet(wb, sec, prices, meta, pct_ref):
     ws["O6"], ws["P6"], ws["Q6"], ws["R6"] = "YEAR", "INITIAL COST", 2020, est_year
     ws["T6"], ws["U6"] = "BEFORE 2020 @", 0.03
     ws["U5"].number_format = ws["U6"].number_format = "0%"
-    ws["W3"] = (f"MDOT ITEM BID PRICES - aashtoreports.mdot.ms.gov BidPrices report, downloaded "
-                f"{meta['downloaded']}. Exact values as published by MDOT.")
+    ws["W3"] = (f"DOT ITEM BID PRICES - aashtoreports.mdot.ms.gov BidPrices report, downloaded "
+                f"{meta['downloaded']}. Exact values as published by DOT.")
     ws["W3"].font = Font(italic=True, size=9)
-    mdot_heads = ["SEARCH RANGE", "PRICE YEAR", "MIN QTY", "MAX QTY", "AVG QTY", "LOW PRICE", "AVG PRICE",
+    dot_heads = ["SEARCH RANGE", "PRICE YEAR", "MIN QTY", "MAX QTY", "AVG QTY", "LOW PRICE", "AVG PRICE",
                   "HIGH PRICE", "SUGGESTED (BEFORE INFLATION)", "METHOD"]
-    ws["W4"] = "MDOT BID DATA USED"; ws["W4"].font = BOLD
-    for i, h in enumerate(mdot_heads):
+    ws["W4"] = "DOT BID DATA USED"; ws["W4"].font = BOLD
+    for i, h in enumerate(dot_heads):
         ws.cell(5, 23 + i, h)
     boxed = list(range(3, 11)) + [13] + list(range(15, 19))
     for row in (5, 6):
@@ -295,7 +295,7 @@ def write_sheet(wb, sec, prices, meta, pct_ref):
         elif s["price"] is not None:
             ws[f"O{r}"], ws[f"P{r}"] = s["year"], s["price"]
         else:
-            if s["flag"] == "No MDOT bid price found":
+            if s["flag"] == "No DOT bid price found":
                 orig = prior_price(meta.get("prior"), sec["name"], code, it["description"])
             if orig is not None:  # original OPCC price is already in estimate-year dollars: no extra inflation
                 ws[f"O{r}"], ws[f"P{r}"] = est_year, round(orig, 2)
@@ -328,21 +328,21 @@ def write_sheet(wb, sec, prices, meta, pct_ref):
             checks.append((code, it["description"], s["note"]))
         if rec and rec.get("found") and rec.get("description") and \
                 rec["description"].strip().lower() != it["description"].strip().lower():
-            notes.append(f"MDOT: {rec['description']}")
+            notes.append(f"DOT: {rec['description']}")
         note = "; ".join(notes)
         ws[f"M{r}"] = (f'=IF(I{r}<>"",TEXT(I{r},"0.0%")&" OF TOTAL ITEMS COST"&{_q("; " if note else "")},"")'
                        f'&{_q(note)}')
-        # MDOT data block (exact values)
+        # DOT data block (exact values)
         if rec and rec.get("found"):
             vals = [rec["range"], rec["price_year"], rec["min_qty"], rec["max_qty"], rec["avg_qty"],
                     rec["low_price"], rec["avg_price"], rec["high_price"], s["price"], s["method"]]
         else:
             vals = [rec["range"] if rec else None, None, None, None, None, None, None, None, None,
-                    s["method"] if s.get("percent") else "No MDOT bid price found"]
+                    s["method"] if s.get("percent") else "No DOT bid price found"]
             if orig is not None:
-                vals[-1] = "No MDOT bid price -> original OPCC price"
+                vals[-1] = "No DOT bid price -> original OPCC price"
         if s.get("percent") and rec and rec.get("found"):
-            vals[-1] = "% of total items cost (MDOT data for reference only)"
+            vals[-1] = "% of total items cost (DOT data for reference only)"
         for i, v in enumerate(vals):
             c = ws.cell(r, 23 + i, v); c.fill = DATA_FILL; c.border = BOX
             if 2 <= i <= 4:
@@ -510,7 +510,7 @@ def main():
     ap.add_argument("--out", required=True)
     ap.add_argument("--today")
     ap.add_argument("--refresh", action="store_true")
-    ap.add_argument("--prior", help="earlier OPCC .xlsx: its unit price is used where MDOT has no price")
+    ap.add_argument("--prior", help="earlier OPCC .xlsx: its unit price is used where DOT has no price")
     a = ap.parse_args()
     sq = json.loads(Path(a.sq_json).read_text())
     today = dt.date.fromisoformat(a.today) if a.today else dt.date.today()

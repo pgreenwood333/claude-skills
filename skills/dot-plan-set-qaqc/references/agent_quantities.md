@@ -26,7 +26,7 @@ the sheets. You transcribe; `reconcile.py` does every sum and comparison. Never 
    if you have looked at both numbers on the image.
 6. Reply with Table 1 and Table 2 status counts, and every MISMATCH in one line each.
 
-## Things this plan format does (learned on MDOT sets)
+## Things this plan format does (learned on DOT sets)
 
 - Bid schedules: the SQ sheets are split into BASE BID, then A1, A2, A3 (Add Options 1-3), and the same pay item
   appears in several. Put `section` on every row ("BASE BID", "ADD OPTION 1" ...). EQ tables say their schedule in the

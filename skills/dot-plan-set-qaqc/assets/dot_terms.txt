@@ -1,5 +1,5 @@
-# MDOT / roadway plan terms the dictionary does not know. One per line, any case. Add project words as you find them.
-MDOT
+# DOT / roadway plan terms the dictionary does not know. One per line, any case. Add project words as you find them.
+DOT
 AASHTO
 MUTCD
 ADA

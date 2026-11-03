@@ -1,13 +1,13 @@
 ---
-name: mdot-extract-standard-drawings
-description: "Extracts the roadway standard drawings called out in an MDOT plan set's Detailed Index into a standalone \"Standards\" companion PDF, pulled from the current MDOT standards master in OneDrive and named from the plan set's own title-sheet data."
+name: dot-extract-standard-drawings
+description: "Extracts the roadway standard drawings called out in a DOT plan set's Detailed Index into a standalone \"Standards\" companion PDF, pulled from the current DOT standards master in OneDrive and named from the plan set's own title-sheet data."
 ---
 
-# MDOT Standard Drawings Extractor
+# DOT Standard Drawings Extractor
 
 ## What this produces
 
-A single PDF containing every roadway standard drawing (working number + sheet number, e.g. ECD-1 / 6101) listed in the plan set's Detailed Index under "STANDARD DRAWINGS - ROADWAY SHEETS," pulled from the current MDOT standards master, assembled in the same order the Detailed Index lists them, and named from the plan set's own title-sheet data.
+A single PDF containing every roadway standard drawing (working number + sheet number, e.g. ECD-1 / 6101) listed in the plan set's Detailed Index under "STANDARD DRAWINGS - ROADWAY SHEETS," pulled from the current DOT standards master, assembled in the same order the Detailed Index lists them, and named from the plan set's own title-sheet data.
 
 Scope is fixed to the "ROADWAY STD. DWGS" section of the Detailed Index only — do not also pull Box Culvert, Bridge, or other categories even if their General Index checkboxes are marked. Bridge standards live inside the plan set itself ("SEE BRIDGE SHEET BEGINNING ON 8001"), not in the standards master, and are out of scope here.
 
@@ -17,7 +17,7 @@ This skill may be shared with other users whose OneDrive layout differs from the
 
 0. **Preflight: confirm the folder structure before doing anything else.** Using the OneDrive MCP connector, check that both of these exist:
    - Documents > ALLI WORKS (where plan sets live and the output gets delivered)
-   - Documents > MDOT > MDOT Standards 2017 (where the standards master lives)
+   - Documents > DOT > DOT Standards 2017 (where the standards master lives)
 
    If both are present as expected, briefly confirm this to the user and continue. If either is missing, renamed, or nested differently, **stop and ask the user** for the correct path rather than guessing or failing partway through — show them what you did find (e.g. sibling folder names under Documents) so they can point you to the right one. Do not proceed to Step 1 until both locations are confirmed, since a wrong guess here means silently reading or writing the wrong project's files.
 
@@ -31,7 +31,7 @@ This skill may be shared with other users whose OneDrive layout differs from the
 
 4. **Read the plan set's Detailed Index sheet** (usually sheet ID `DI-1`). Locate the "STANDARD DRAWINGS - ROADWAY SHEETS (N)" section specifically. Record every row's Working Number (e.g. `ECD-1`) and Sheet Number (e.g. `6101`) in the order they appear — this order is the final document's page order.
 
-5. **Find the standards master.** In Documents > MDOT > MDOT Standards 2017, open the "Roadway Design Standard Drawings No Watermark" file's title/cover page and find its revision or issue date.
+5. **Find the standards master.** In Documents > DOT > DOT Standards 2017, open the "Roadway Design Standard Drawings No Watermark" file's title/cover page and find its revision or issue date.
 
 6. **Confirm currency with the user.** Tell the user the revision date you found on the standards master and explicitly ask them to confirm this is the most current version before proceeding. Never assume it's current on your own — this is a checkpoint, not a formality; wait for their answer before extracting anything.
 

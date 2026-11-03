@@ -13,7 +13,7 @@ from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 from qaqc_common import load_json, TASKS
 
-# muted fills (status colours from the MDOT reconciliation convention)
+# muted fills (status colours from the DOT reconciliation convention)
 FILL = {
     "MATCH": "D9EAD3", "MISMATCH": "F4CCCC", "VERIFIED WITH FOOTNOTE": "FFF2CC",
     "ESTIMATED-NOT RECONCILED": "F8D7E3", "N/A-NO RECAP EXPECTED": "E7E6E6", "NOT FOUND ON EQ": None,

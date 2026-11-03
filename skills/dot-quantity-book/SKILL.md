@@ -1,9 +1,9 @@
 ---
-name: mdot-quantity-book
-description: "Build an MDOT quantity calculations binder (quantity book) from a plan set's title sheet and the engineer's quantity calculation files (Excel .xlsx/.xlsm, Word, PDF, text): a title sheet + table of contents Word document and PDF in the firm's approved binder format, and one combined quantity-calculations PDF numbered from page 3. Use when someone wants a quantity book, quantity binder, quantity calculations binder, title sheet and index for their calcs, or to put their quantity calculations together for submittal."
+name: dot-quantity-book
+description: "Build a DOT quantity calculations binder (quantity book) from a plan set's title sheet and the engineer's quantity calculation files (Excel .xlsx/.xlsm, Word, PDF, text): a title sheet + table of contents Word document and PDF in the firm's approved binder format, and one combined quantity-calculations PDF numbered from page 3. Use when someone wants a quantity book, quantity binder, quantity calculations binder, title sheet and index for their calcs, or to put their quantity calculations together for submittal."
 ---
 
-# MDOT quantity calculations binder
+# DOT quantity calculations binder
 
 Outputs (next to the inputs unless the user says otherwise):
 - `<Project>_TitleSheet_Index.docx` and `.pdf`: page 1 cover, page 2 table of contents

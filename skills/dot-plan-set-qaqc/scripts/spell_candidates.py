@@ -4,7 +4,7 @@
   spell_candidates.py <index_dir> <out.json> [--allow extra_terms.txt]
 
 Produces three lists, each item with page, sheet ID, box, source (text/ocr), OCR confidence and the full line:
-  unknown     words not in the English dictionary or the MDOT allow-list, with the dictionary's best suggestion
+  unknown     words not in the English dictionary or the DOT allow-list, with the dictionary's best suggestion
   repeated    the same word twice in a row ("THE THE")
   variants    two spellings of one term used in the set (e.g. PERMANENT / PERMAMENT), with counts
 Skipped: tokens with digits, station or pay-item notation, 1-2 letter tokens, and unknown words that recur
@@ -35,7 +35,7 @@ def main():
     from spellchecker import SpellChecker
     sp = SpellChecker(distance=2)
     allow = set()
-    for path in [os.path.join(HERE, "..", "assets", "mdot_terms.txt"), a.allow]:
+    for path in [os.path.join(HERE, "..", "assets", "dot_terms.txt"), a.allow]:
         if path and os.path.exists(path):
             allow |= {l.strip().upper() for l in open(path) if l.strip() and not l.startswith("#")}
     idx = json.load(open(os.path.join(a.index, "index.json")))

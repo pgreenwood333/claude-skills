@@ -8,7 +8,7 @@ Goal: real spelling errors on any sheet, including sheet titles, notes, table ti
    - misspellings (PERMAMENT, GUTTTER, RECIEVE), repeated words, typos in titles and notes;
    - the same term spelled two ways in the set (`variants`): report the wrong form and where it is;
    - inconsistent spelling of proper names (streets, the project name) across sheets.
-   Not errors: abbreviations, MDOT/AASHTO terms, pay-item wording, units, street and place names used consistently,
+   Not errors: abbreviations, DOT/AASHTO terms, pay-item wording, units, street and place names used consistently,
    intentional all-caps labels, words broken across two lines on purpose.
    A name can still hold a typo: `variants` with the note "4-letter swap of a dictionary word" (RAOD/ROAD) are
    checked even inside owner or company names; report them low with "(verify against the deed)". Also skim

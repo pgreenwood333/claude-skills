@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""MDOT (Mississippi DOT) item bid price lookup.
+"""DOT (Mississippi DOT) item bid price lookup.
 
-Pulls MDOT's public "Item Bid Prices" report (AASHTOWare report page embedded on
+Pulls DOT's public "Item Bid Prices" report (AASHTOWare report page embedded on
 mdot.ms.gov/portal/item_bid_prices) for any date range and returns, per pay item:
 min/max/avg quantity and low/high/avg unit price.
 
@@ -11,9 +11,9 @@ nest, an item first found in the range starting Jan 1 of year X was last bid in 
 so that range's numbers all come from year X (the "price year").
 
 Usage:
-  mdot_bid_prices.py lookup 203-A002 907-403-A015 [--today 2026-10-29] [--refresh]
-  mdot_bid_prices.py lookup --file items.json --out prices.json
-  mdot_bid_prices.py range 1/1/2025 12/31/2025 --out bids_2025.xlsx
+  dot_bid_prices.py lookup 203-A002 907-403-A015 [--today 2026-10-29] [--refresh]
+  dot_bid_prices.py lookup --file items.json --out prices.json
+  dot_bid_prices.py range 1/1/2025 12/31/2025 --out bids_2025.xlsx
 """
 from __future__ import annotations
 
@@ -33,20 +33,20 @@ import requests
 
 URL = "https://aashtoreports.mdot.ms.gov/trnsreportspublic/reports/BidPrices.aspx"
 def _cache_dir() -> Path:
-    """MDOT_BID_CACHE if set, else the external drive on Peyton's Mac, else ~/.cache (e.g. in Cowork)."""
-    if os.environ.get("MDOT_BID_CACHE"):
-        return Path(os.environ["MDOT_BID_CACHE"])
+    """DOT_BID_CACHE if set, else the external drive on Peyton's Mac, else ~/.cache (e.g. in Cowork)."""
+    if os.environ.get("DOT_BID_CACHE"):
+        return Path(os.environ["DOT_BID_CACHE"])
     if Path("/Volumes/PGExtHD").is_dir():
         return Path("/Volumes/PGExtHD/OPCC/cache")
-    return Path.home() / ".cache" / "mdot-bid-prices"
+    return Path.home() / ".cache" / "dot-bid-prices"
 
 
 CACHE_DIR = _cache_dir()
 MAX_YEARS_BACK = 10
-# Hosted price API (Cloudflare Worker, refreshed monthly from MDOT by GitHub Actions). Same search rules and
-# one-project guardrail as below, answered in about a second with no download. Set MDOT_PRICE_API="" to always
-# download straight from MDOT instead.
-API_URL = os.environ.get("MDOT_PRICE_API", "https://mdot-bid-prices.pgreenwood333.workers.dev")
+# Hosted price API (Cloudflare Worker, refreshed monthly from DOT by GitHub Actions). Same search rules and
+# one-project guardrail as below, answered in about a second with no download. Set DOT_PRICE_API="" to always
+# download straight from DOT instead.
+API_URL = os.environ.get("DOT_PRICE_API", "https://dot-bid-prices.pgreenwood333.workers.dev")
 FRESH_DAYS = 7  # ranges that end "today" are reused for this many days
 
 # DevExpress asks for these on every postback (copied from the live page).
@@ -58,7 +58,7 @@ _DX = {
 _COLS = ["item", "description", "unit", "min_qty", "low_price", "max_qty", "high_price", "avg_qty", "avg_price"]
 
 
-class MDOTError(RuntimeError):
+class DOTError(RuntimeError):
     pass
 
 
@@ -81,7 +81,7 @@ def _date_fields(start: dt.date, end: dt.date) -> dict:
 
 
 def download_range(start: dt.date, end: dt.date, retries: int = 3) -> bytes | None:
-    """Download MDOT's Excel export for [start, end]. Returns None when MDOT has no bids in the range."""
+    """Download DOT's Excel export for [start, end]. Returns None when DOT has no bids in the range."""
     want = f"From {_mdy(start)} to {_mdy(end)}"
     last = None
     for attempt in range(retries):
@@ -92,20 +92,20 @@ def download_range(start: dt.date, end: dt.date, retries: int = 3) -> bytes | No
             form = {"__EVENTTARGET": "", "__EVENTARGUMENT": "", **_date_fields(start, end), **_DX}
             html = s.post(URL, data={**_hidden(html), **form, "run": "Retrieve Data"}, timeout=600).text
             if want not in html:
-                raise MDOTError(f"MDOT did not run the requested range ({want}); the page may have changed")
+                raise DOTError(f"DOT did not run the requested range ({want}); the page may have changed")
             if not re.search(r">\d{3,4}-[A-Z0-9]+<", html):  # grid has no pay items
                 return None
             r = s.post(URL, data={**_hidden(html), **form, "Button2": "Save to Excel"}, timeout=600)
             if "spreadsheetml" not in r.headers.get("content-type", ""):
-                raise MDOTError("MDOT did not return an Excel file")
+                raise DOTError("DOT did not return an Excel file")
             rows = _read_rows(r.content)
             if rows["title"] != want:
-                raise MDOTError(f"Excel export is for '{rows['title']}', expected '{want}'")
+                raise DOTError(f"Excel export is for '{rows['title']}', expected '{want}'")
             return r.content
-        except (requests.RequestException, MDOTError) as e:
+        except (requests.RequestException, DOTError) as e:
             last = e
             time.sleep(2 * (attempt + 1))
-    raise MDOTError(f"Could not download MDOT bid prices for {want}: {last}")
+    raise DOTError(f"Could not download DOT bid prices for {want}: {last}")
 
 
 def _read_rows(xlsx: bytes) -> dict:
@@ -172,7 +172,7 @@ def lookup_api(items: list[str], log=lambda m: None) -> dict:
             if rec.get("found"):
                 rec.setdefault("downloaded", body["downloaded"][:10])
             out[code] = rec
-    log(f"Prices from the MDOT price API (data through {body.get('data_through')}, refreshed "
+    log(f"Prices from the DOT price API (data through {body.get('data_through')}, refreshed "
         f"{body.get('downloaded', '')[:10]})")
     return out
 
@@ -181,12 +181,12 @@ def lookup(items: list[str], today: dt.date | None = None, refresh: bool = False
            years_back: int = MAX_YEARS_BACK, log=lambda m: None) -> dict:
     """Apply the widening date-range rule to each pay item. Returns {item: result}.
     Uses the hosted API when available (unless refresh=True or a past/future `today` is given); otherwise, or if
-    the API can't be reached, downloads straight from MDOT."""
+    the API can't be reached, downloads straight from DOT."""
     if API_URL and not refresh and (today is None or today == dt.date.today()):
         try:
             return lookup_api(items, log=log)
         except (requests.RequestException, ValueError, KeyError) as e:
-            log(f"Price API not reachable ({e}); downloading straight from MDOT instead")
+            log(f"Price API not reachable ({e}); downloading straight from DOT instead")
     today = today or dt.date.today()
     wanted = [i.strip().upper() for i in items if i and i.strip()]
     out = {}
@@ -213,7 +213,7 @@ def lookup(items: list[str], today: dt.date | None = None, refresh: bool = False
     for it in pending:
         out[it] = {"found": False, "item": it,
                    "range": f"{_mdy(dt.date(today.year - years_back + 1, 1, 1))} - {_mdy(today)}",
-                   "note": "No MDOT bid price found"}
+                   "note": "No DOT bid price found"}
     return out
 
 
@@ -303,7 +303,7 @@ def _main():
         p = lambda s: dt.datetime.strptime(s, "%m/%d/%Y").date()
         data = download_range(p(a.start), p(a.end))
         if data is None:
-            sys.exit("MDOT has no bids in that range")
+            sys.exit("DOT has no bids in that range")
         Path(a.out).write_bytes(data)
         print(f"Saved {a.out}")
         return

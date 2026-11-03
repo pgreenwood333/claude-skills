@@ -1,9 +1,9 @@
 ---
-name: "mdot-plan-set-qaqc"
-description: "QA/QC review of an MDOT roadway plan set PDF. Use when someone wants to QC, QA/QC, check or review plans or a plan set. Indexes and chunks the whole set (text layer + OCR of pasted tables, hybrid keyword/vector search), asks which checks to run (Detailed Index vs sheets, spelling, overlapping text in WK profiles, print color on WK sheets (proposed drainage blue, existing purple, rest black), plan/profile/cross-section note match, quantity reconciliation), runs one subagent per check, gates every flag on evidence printed on the sheet, has an independent grader score the run and send weak checks back, highlights confirmed flags in red in the PDF, builds a color-coded Excel workbook, and keeps a memory of the engineer's corrections so later runs improve."
+name: "dot-plan-set-qaqc"
+description: "QA/QC review of a DOT roadway plan set PDF. Use when someone wants to QC, QA/QC, check or review plans or a plan set. Indexes and chunks the whole set (text layer + OCR of pasted tables, hybrid keyword/vector search), asks which checks to run (Detailed Index vs sheets, spelling, overlapping text in WK profiles, print color on WK sheets (proposed drainage blue, existing purple, rest black), plan/profile/cross-section note match, quantity reconciliation), runs one subagent per check, gates every flag on evidence printed on the sheet, has an independent grader score the run and send weak checks back, highlights confirmed flags in red in the PDF, builds a color-coded Excel workbook, and keeps a memory of the engineer's corrections so later runs improve."
 ---
 
-# MDOT Plan Set QA/QC
+# DOT Plan Set QA/QC
 
 You are the orchestrator. Input: one plan-set PDF. Outputs, next to the PDF unless the user says otherwise:
 `<pdf name>_QAQC.xlsx` and `<pdf name>_QAQC_markup.pdf` (red highlights), plus a short chat summary.

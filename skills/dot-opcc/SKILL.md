@@ -1,40 +1,40 @@
 ---
-name: mdot-opcc
-description: "Build a Mississippi DOT (MDOT) Opinion of Probable Construction Cost (OPCC, engineer's estimate) Excel workbook from a plan set's Summary of Quantities, pricing every pay item from MDOT's published Item Bid Prices (low / average / high bid and quantity range, searched from this year back up to 10 years). Also looks up MDOT bid prices for any pay item numbers on request. Use when someone wants an OPCC, cost estimate, engineer's estimate or opinion of probable cost for an MDOT job, wants unit prices or bid history for MDOT pay items, or drops in a summary of quantities and asks what the job will cost."
+name: dot-opcc
+description: "Build a state DOT Opinion of Probable Construction Cost (OPCC, engineer's estimate) Excel workbook from a plan set's Summary of Quantities, pricing every pay item from DOT's published Item Bid Prices (low / average / high bid and quantity range, searched from this year back up to 10 years). Also looks up DOT bid prices for any pay item numbers on request. Use when someone wants an OPCC, cost estimate, engineer's estimate or opinion of probable cost for a DOT job, wants unit prices or bid history for DOT pay items, or drops in a summary of quantities and asks what the job will cost."
 ---
 
-# MDOT Opinion of Probable Construction Cost
+# DOT Opinion of Probable Construction Cost
 
 Scripts are in this skill's `scripts/` folder (call it `$S`). Needs Python 3 with `openpyxl`, `requests`, `pymupdf`,
 and `pycel` (used for sizing columns; optional). If any are missing (e.g. in Cowork), run
 `pip install openpyxl requests pymupdf pycel --break-system-packages -q`.
 The scripts must be able to reach `aashtoreports.mdot.ms.gov` over the internet. If that is blocked, say so;
 never make up prices.
-MDOT downloads are cached in `/Volumes/PGExtHD/OPCC/cache/` when that drive is present, otherwise in
-`~/.cache/mdot-bid-prices` (set `MDOT_BID_CACHE` to choose).
+DOT downloads are cached in `/Volumes/PGExtHD/OPCC/cache/` when that drive is present, otherwise in
+`~/.cache/dot-bid-prices` (set `DOT_BID_CACHE` to choose).
 
 ## Where prices come from
 
-Prices come from the **MDOT price API** (`https://mdot-bid-prices.pgreenwood333.workers.dev`, a Cloudflare Worker).
-GitHub Actions downloads MDOT's Item Bid Prices report on the 1st of each month (repo
-`pgreenwood333/mdot-bid-prices`, private) and the API answers lookups in about a second with the same search rules
-and one-project guardrail as below. If the API can't be reached, the scripts download straight from MDOT instead
-(slower, same results). `MDOT_PRICE_API=""` forces the direct download; `--refresh` also bypasses the API.
+Prices come from the **DOT price API** (`https://dot-bid-prices.pgreenwood333.workers.dev`, a Cloudflare Worker).
+GitHub Actions downloads DOT's Item Bid Prices report on the 1st of each month (repo
+`pgreenwood333/dot-bid-prices`, private) and the API answers lookups in about a second with the same search rules
+and one-project guardrail as below. If the API can't be reached, the scripts download straight from DOT instead
+(slower, same results). `DOT_PRICE_API=""` forces the direct download; `--refresh` also bypasses the API.
 The API's data can be up to a month old; for a big estimate the monthly job can be run on demand from GitHub
-(Actions -> Refresh MDOT bid prices -> Run workflow).
+(Actions -> Refresh DOT bid prices -> Run workflow).
 
 ## Price lookup on its own
 
-`python3 $S/mdot_bid_prices.py lookup 203-A002 907-403-A015 ...` prints, for each pay item: the date range
+`python3 $S/dot_bid_prices.py lookup 203-A002 907-403-A015 ...` prints, for each pay item: the date range
 that found it, price year, min/max quantity, and low/avg/high price. Use it when the user only wants prices.
-`range 1/1/2025 12/31/2025 --out file.xlsx` saves MDOT's raw export for one date range.
+`range 1/1/2025 12/31/2025 --out file.xlsx` saves DOT's raw export for one date range.
 
 How it searches: Jan 1 of this year → today. If an item has no bids, widen to Jan 1 of last year → today, then
 the year before, up to 10 years. The ranges nest, so an item first found in the range starting in year X was
-last bid in year X: that is its price year. MDOT's data starts around 2017–2018, so older years add nothing.
-Source: MDOT's Item Bid Prices report (`mdot.ms.gov/portal/item_bid_prices`, served from
+last bid in year X: that is its price year. DOT's data starts around 2017–2018, so older years add nothing.
+Source: DOT's Item Bid Prices report (`mdot.ms.gov/portal/item_bid_prices`, served from
 `aashtoreports.mdot.ms.gov/trnsreportspublic/reports/BidPrices.aspx`). There is no official API; the script fills
-in the report's date form and downloads its Excel export. If MDOT changes the page, the script stops with an
+in the report's date form and downloads its Excel export. If DOT changes the page, the script stops with an
 error instead of returning wrong data. Say so; never make up prices.
 
 ## Building an OPCC
@@ -55,8 +55,8 @@ SQ (SQ-BR sheets) if the job has a bridge and only the roadway SQ was given.
 Everything is Base Bid unless the SQ has an explicit label row ("BASE BID", "ADD OPTION 1", "A1"/"A2" → ADD OPTION
 1/2, "ADDITIVE ALTERNATE 2"); any other text-only row is ignored with a warning. "OR" rows mark alternates (e.g.
 304-F001 OR 304-F002 OR 304-F003, same quantity). Like the firm's OPCC sheet, EVERY alternate gets its own row
-with its own MDOT price, but only ONE counts in the totals (the contractor bids one). Column J (ALT. COUNTED) on alternate rows
-holds a YES/NO dropdown: YES starts on the lowest suggested MDOT price; rows marked NO show grey and are left out
+with its own DOT price, but only ONE counts in the totals (the contractor bids one). Column J (ALT. COUNTED) on alternate rows
+holds a YES/NO dropdown: YES starts on the lowest suggested DOT price; rows marked NO show grey and are left out
 of TOTAL ITEMS COST, the % items and the SUB-TOTAL. The engineer switches it by moving the YES.
 It skips note bubbles and notes
 below the table. An item whose description ends in "Base Bid" or "Add Option n" (e.g. "Sunshade Add Option 3")
@@ -70,10 +70,10 @@ item count and any WARNING lines. Ask them to confirm, especially when Final is 
 python3 $S/build_opcc.py opcc_work/sq.json --project "<name>" --fa "<FA no>" --by "<NAME>" \
     --out "<folder of the SQ>/<job>-<yyyy-mm-dd>-OPCC.xlsx"
 ```
-Add `--refresh` to force fresh MDOT downloads (otherwise ranges ending today are reused for 7 days).
-Add `--prior <earlier OPCC.xlsx>` when the user has an earlier OPCC for the job (ask). For items with no MDOT
+Add `--refresh` to force fresh DOT downloads (otherwise ranges ending today are reused for 7 days).
+Add `--prior <earlier OPCC.xlsx>` when the user has an earlier OPCC for the job (ask). For items with no DOT
 price, its UNIT PRICE is filled in (green cells, year = estimate year so it isn't inflated again), and
-REMARKS keeps "No MDOT bid price found; used original OPCC price $...". Matching is by sheet + pay item +
+REMARKS keeps "No DOT bid price found; used original OPCC price $...". Matching is by sheet + pay item +
 description, so duplicate items such as roadway vs bridge Structure Excavation match correctly.
 
 Column widths are sized to fit every shown value (formulas are calculated with `pycel` first) on every build.
@@ -86,7 +86,7 @@ What it writes, one tab per bid section, in the firm's OPCC layout:
   TOTAL rows.
 - **Columns O–R + T–U:** the inflation block. YEAR = price year, INITIAL COST = suggested price.
   Inflation is 8%/yr from 2020 and 3%/yr before 2020, up to the estimate year.
-- **Columns W–AF:** MDOT bid data used, with the exact MDOT values: search range, price year, min/max/avg
+- **Columns W–AF:** DOT bid data used, with the exact DOT values: search range, price year, min/max/avg
   quantity, low/avg/high price, suggested price before inflation, and the method used.
 - **% OF ITEMS (column I) has a dropdown on EVERY pay item row** (0.5%, 1%–20%, or type any %). Blank = the line
   uses its unit price. A % turns that line into % x TOTAL ITEMS COST and overrides its unit price (e.g. Service
@@ -95,33 +95,33 @@ What it writes, one tab per bid section, in the firm's OPCC layout:
   column N that never reads the price/total columns, so there is no circular reference.
 - **Default % items:** MOT 907-618-A001, Mobilization 620-A001, Construction Stakes 699-A001, Clearing & Grubbing
   ONLY when paid by Lump Sum (201-A001 / unit LS): 5% each. Contingencies: 5% of SUB-TOTAL (its own dropdown).
-  Clearing & Grubbing by the Acre (201-B001) is NOT a % item: it is priced from MDOT bids like any other item.
+  Clearing & Grubbing by the Acre (201-B001) is NOT a % item: it is priced from DOT bids like any other item.
 - **ALT. COUNTED (column J):** YES/NO dropdown on alternate rows only (see "OR" alternates above).
 
-**One-project guardrail** (`widen_single_project()` in `mdot_bid_prices.py`): if the range where an item is first
+**One-project guardrail** (`widen_single_project()` in `dot_bid_prices.py`): if the range where an item is first
 found has only one bid quantity (one project), one job is not enough to price from. The skill pulls earlier years
 one at a time (single-year ranges) until the bids come from at least two projects, up to 10 years back. Each
 year's prices are inflated to the estimate year on their own (sheet rates: 8%/yr from 2020, 3%/yr before), then
 combined (lowest low, highest high, mean of the yearly averages, quantity range across years). The suggested
-price is then already in estimate-year dollars, so YEAR = the estimate year; the MDOT columns show which years
+price is then already in estimate-year dollars, so YEAR = the estimate year; the DOT columns show which years
 were combined and REMARKS says so. If 10 years still show only one project, the item keeps that price with
-"CHECK: only one MDOT project in 10 years of bids - use judgment".
+"CHECK: only one DOT project in 10 years of bids - use judgment".
 
 Suggested price rules (`suggest()` in `build_opcc.py`):
 - Normal items use a line from (min qty, high price) to (max qty, low price), with quantity on a log scale.
   - At or below min qty: high price.
-  - At or above max qty (bigger than any MDOT job in the range): the MIDPOINT of MDOT's low and average price.
-    MDOT's "low" is the single lowest bid on any job, so using it alone pinned large quantities to one aggressive
+  - At or above max qty (bigger than any DOT job in the range): the MIDPOINT of DOT's low and average price.
+    DOT's "low" is the single lowest bid on any job, so using it alone pinned large quantities to one aggressive
     bid (tested on four jobs: the midpoint cut the miss against the engineer's prices on these lines from $40.6M to
     $24.3M).
-  - When MDOT's min qty = max qty (one project): the average price.
-- If high > 10× low (usually penny or unbalanced bids): the average price, with "CHECK: wide MDOT price range"
+  - When DOT's min qty = max qty (one project): the average price.
+- If high > 10× low (usually penny or unbalanced bids): the average price, with "CHECK: wide DOT price range"
   in REMARKS.
-- Only one bid price: that price, with "CHECK: only one MDOT bid price".
+- Only one bid price: that price, with "CHECK: only one DOT bid price".
 - **Left blank for the engineer** (yellow cells O/P, reason in REMARKS):
   - Per Plans items (`-PP`)
-  - no MDOT price found
-  - unit on the SQ differs from MDOT's unit
+  - no DOT price found
+  - unit on the SQ differs from DOT's unit
   - no quantity
 
 ### 4. Check, then deliver
@@ -134,13 +134,13 @@ Send the workbook. In the message give:
   first run `import ast; ast.Str = lambda s=None, **k: ast.Constant(s)`.
 - the BLANK items the engineer must price
 - the CHECK items worth a look
-- the MDOT download date
+- the DOT download date
 
-Say plainly that the prices are a starting point from MDOT bid history; the engineer picks the final number.
+Say plainly that the prices are a starting point from DOT bid history; the engineer picks the final number.
 
 ## Rules
-- Quantities and descriptions come from the SQ only; prices come from MDOT only. Never fill a blank with a guess.
+- Quantities and descriptions come from the SQ only; prices come from DOT only. Never fill a blank with a guess.
 - Never edit the user's SQ; write the OPCC next to it (or where they say).
-- If MDOT's description differs from the SQ, keep the SQ wording and note "MDOT: ..." in REMARKS.
+- If DOT's description differs from the SQ, keep the SQ wording and note "DOT: ..." in REMARKS.
 - Revisions (a different %, a different price, re-run with a newer SQ): rebuild with the script. For a single
   price, the user can type over column P (INITIAL COST) and O (YEAR) themselves, or pick a % in column I.

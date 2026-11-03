@@ -1,6 +1,6 @@
 ---
 name: profile-notes-extractor
-description: "Pull the stacked notes in the profile view of MDOT/roadway plan-profile sheets (drainage structure callouts like 337 B / STA. 337+36.00 / SS-2 REQ'D LT / TOP = / INV. =, drive, box culvert and bridge notes) into a Word doc in station order, optionally for a station range; apply the user's approved corrections as a new revision; and reorder a plan PDF by the SHEET NO. in the title block. Use when someone uploads WK / plan-profile sheets and wants profile notes listed, extracted or put in Word, or the sheets put in sheet-number order."
+description: "Pull the stacked notes in the profile view of DOT/roadway plan-profile sheets (drainage structure callouts like 337 B / STA. 337+36.00 / SS-2 REQ'D LT / TOP = / INV. =, drive, box culvert and bridge notes) into a Word doc in station order, optionally for a station range; apply the user's approved corrections as a new revision; and reorder a plan PDF by the SHEET NO. in the title block. Use when someone uploads WK / plan-profile sheets and wants profile notes listed, extracted or put in Word, or the sheets put in sheet-number order."
 ---
 
 # Profile Notes Extractor

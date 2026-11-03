@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Read an MDOT Summary of Quantities (PDF plan sheets or Excel) into JSON.
+"""Read a DOT Summary of Quantities (PDF plan sheets or Excel) into JSON.
 
 Output:
 {

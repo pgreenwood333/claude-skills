@@ -18,7 +18,7 @@ Input rows (one per table row read from the plans; quantities as written, commas
                    "note": "...", "cause": "...", "eq_qty": "for OR items: paired item's qty"}}
 Matching: pay item number first (spaces and dashes ignored), then exact description. Multiple EQ rows for one item are
 summed (e.g. one item listed in two EQ tables); recap rows are summed across all working sheets.
-SQS = EQ rounded UP to the next whole number counts as MATCH (MDOT rounding).
+SQS = EQ rounded UP to the next whole number counts as MATCH (DOT rounding).
 """
 import json, math, os, re, sys
 from qaqc_common import load_json, save_json
