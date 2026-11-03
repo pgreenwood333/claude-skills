@@ -123,9 +123,10 @@ python3 $S/build_simple_report.py qaqc_work/findings_reviewed.json qaqc_work/ind
 ```
 The workbook is a plain punch list: one tab per check, one row per sheet (Spelling: Text Found / Correct To;
 others: What's Wrong / Fix / Priority), XX placeholders on their own tab, plus Your Call and Rejected tabs.
-Note Match is one row per flag, never duplicated: a profile-vs-XS flag lists both sheets in one row
-(Sheet ID(s) / PDF Page(s)), with a What Doesn't Match column ("Profile: …" / "XS: …", or "XS: cross-section note
-not found"). Every row on a check tab ends with a Review dropdown that colors the row: Correct (green, fixed on the
+Note Match is one row per structure or driveway, sorted by station, never duplicated: Station | Plan Note |
+Profile Note | Cross Section Note (each note starts with its sheet, e.g. "WK-3LT: …"; a DRY driveway's plan note is
+"N/A (DRY)"; a note that is not there reads MISSING) | Discrepancy (every flag of that structure, e.g. "Pipe size:
+plan XX\" vs profile 18\"", "MISSING on cross section", "MISSING in profile"). Every row on a check tab ends with a Review dropdown that colors the row: Correct (green, fixed on the
 plans), Incorrect (red, still to fix; every row starts here) or N/A (orange, the flag was wrong and there is
 nothing to fix). A hidden Flag ID column ties each row back to its finding. If the
 engineer wants the detailed version (evidence, locate, review notes), also run `build_report.py` with the same

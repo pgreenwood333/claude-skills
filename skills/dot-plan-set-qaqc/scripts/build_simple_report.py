@@ -72,6 +72,42 @@ def mismatch(evidence, n=500):
     return text if len(text) <= n else text[:n - 1].rstrip() + "…"
 
 
+def disc_lines(disc):
+    """A flag's discrepancy as readable lines: "pipe size: plan 'XX\"' vs profile '18\"'" -> Pipe size: plan XX\" vs profile 18\"."""
+    out = []
+    for part in re.split(r";\s+(?=[\w ]+:\s*\w+\s+')", disc or ""):
+        m = re.match(r"\s*([\w ]+):\s*(\w+)\s+'(.*)'\s+vs\s+(\w+)\s+'(.*)'\s*$", part)
+        out.append(f"{m.group(1)[0].upper() + m.group(1)[1:]}: {m.group(2)} {m.group(3)} vs {m.group(4)} {m.group(5)}"
+                   if m else part.strip())
+    return [o for o in out if o]
+
+
+def notematch_rows(flags, sid_by_page):
+    """Note Match tab: one row per structure or driveway (all of its flags in one Discrepancy cell), by station."""
+    groups = {}
+    for f in flags:
+        key = (f.get("note") or {}).get("key") or f["id"]
+        groups.setdefault(key, []).append(f)
+    rows = []
+    for key, fs in groups.items():
+        n = next((f["note"] for f in fs if f.get("note")), None)
+        lines = []
+        for f in fs:
+            lines += disc_lines(f.get("discrepancy")) if f.get("discrepancy") else \
+                [short(f.get("finding")), mismatch(f.get("evidence"))]
+        lines = list(dict.fromkeys(lines))
+        disc = "\n".join(("• " + l if len(lines) > 1 else l) for l in lines)
+        reviews = {f.get("engineer_review") or "Incorrect" for f in fs}
+        tag = dict(id=", ".join(f["id"] for f in fs), review=reviews.pop() if len(reviews) == 1 else "Incorrect")
+        if n:
+            rows.append([n["station"], n["plan"], n["profile"], n["xs"], disc, n.get("sta", 0), tag])
+        else:   # a flag added by eye or about several notes: name its sheets instead
+            sids = ", ".join(dict.fromkeys(s_ for s_, _ in rows_for(fs[0], sid_by_page) if s_))
+            rows.append([sids, "", "", "", disc, 1e9, tag])
+    rows.sort(key=lambda r: (r[5], r[0]))
+    return [r[:5] + [r[6]] for r in rows]
+
+
 def short(text, n=220):
     text = re.sub(r"\s+", " ", text or "").strip()
     return text if len(text) <= n else text[:n - 1].rstrip() + "…"
@@ -161,12 +197,7 @@ def main():
             pri = PRIORITY.get(f.get("severity"), "")
             quotes = QUOTE.findall(f.get("evidence", ""))
             tag = dict(id=f["id"], review=f.get("engineer_review") or "Incorrect")
-            if t == "notematch":   # one row per flag: a profile-vs-XS flag names both sheets in one row
-                rf = rows_for(f, sid_by_page)
-                sids = ", ".join(dict.fromkeys(s_ for s_, _ in rf if s_))
-                pgs = [p_ for _, p_ in rf if isinstance(p_, int)]
-                rows.append([sids, ", ".join(map(str, pgs)), short(f.get("finding")), mismatch(f.get("evidence")),
-                             short(f.get("suggested_fix"), 160), pri, status(f), min(pgs) if pgs else 9999, tag])
+            if t == "notematch":   # grouped per structure / driveway below
                 continue
             for sid, pg in rows_for(f, sid_by_page):
                 if t == "spelling":
@@ -180,10 +211,8 @@ def main():
             table(wb, name, ["Sheet ID", "PDF Page", "Text Found", "Correct To", "Status", "Notes"], rows,
                   [12, 9, 34, 34, 12, 60], review=True)
         elif t == "notematch":
-            rows.sort(key=lambda r: (order.get(r[5], 3), r[7]))
-            rows = [r[:7] + [r[8]] for r in rows]
-            table(wb, name, ["Sheet ID(s)", "PDF Page(s)", "What's Wrong", "What Doesn't Match", "Fix", "Priority", "Status"],
-                  rows, [18, 11, 60, 55, 40, 10, 12], review=True)
+            table(wb, name, ["Station", "Plan Note", "Profile Note", "Cross Section Note", "Discrepancy"],
+                  notematch_rows(ft, sid_by_page), [20, 38, 55, 55, 48], review=True)
         else:
             rows.sort(key=lambda r: (order.get(r[4], 3), r[1] if isinstance(r[1], int) else 9999))
             table(wb, name, ["Sheet ID", "PDF Page", "What's Wrong", "Fix", "Priority", "Status"], rows,

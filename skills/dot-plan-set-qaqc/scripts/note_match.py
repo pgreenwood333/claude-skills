@@ -77,17 +77,42 @@ def drive_fields(note):
     return dict(station=fmt_sta(note["sta"]), side=side_of(note), width=width and f"{width}'", pipe=pipe)
 
 
+def pipe_parts(t):
+    """Driveway pipe line -> (length, size, type): 40' - XX" ALT. PIPE REQ'D. -> ('40', 'XX', 'ALT'); DRY -> 'DRY'."""
+    if not t:
+        return None
+    if t.rstrip(".") == "DRY":
+        return "DRY"
+    m = re.search(r"(\d+(?:\.\d+)?)'\s*-?\s*(\d+|XX)\"\s*(.*?)\s*(?:REQ'?D\.?)?\s*$", t)
+    if not m:
+        return (None, None, t)
+    kind = m.group(3).upper().replace(".", "").replace(" PIPE", "").strip() or None   # "ALT. PIPE" / "ALT" -> ALT
+    return (m.group(1), m.group(2), kind)
+
+
+def pipe_diffs(a, b, wa="profile", wb="XS"):
+    """What differs between two driveway pipe lines, as short phrases ([] = same). XX is a difference too."""
+    pa, pb = pipe_parts(a), pipe_parts(b)
+    if pa == pb:
+        return []
+    if pa is None or pb is None or "DRY" in (pa, pb):
+        return [f"pipe: {wa} '{a or '(missing)'}' vs {wb} '{b or '(missing)'}'"]
+    out = []
+    for i, name, unit in ((0, "pipe length", "'"), (1, "pipe size", '"'), (2, "pipe type", "")):
+        if pa[i] != pb[i]:
+            out.append(f"{name}: {wa} '{(pa[i] or '(none)') + (unit if pa[i] else '')}' vs "
+                       f"{wb} '{(pb[i] or '(none)') + (unit if pb[i] else '')}'")
+    return out
+
+
 def drive_diffs(n, x):
-    """Differences between a profile and an XS driveway note ([] = same). An XX size in one matches any size."""
+    """Differences between a profile and an XS driveway note ([] = same). An XX size is flagged like any other."""
     a, b = drive_fields(n), drive_fields(x)
     out = []
-    for k in ("station", "side", "width", "pipe"):
-        va, vb = a[k], b[k]
-        if k == "pipe" and va and vb and ('XX"' in va) != ('XX"' in vb):
-            va, vb = (re.sub(r'\d+"|XX"', 'XX"', v) for v in (va, vb))
-        if va != vb:
+    for k in ("station", "side", "width"):
+        if a[k] != b[k]:
             out.append(f"{k}: profile '{a[k] or '(missing)'}' vs XS '{b[k] or '(missing)'}'")
-    return out
+    return out + pipe_diffs(a["pipe"], b["pipe"])
 
 
 def fmt_sta(v):
@@ -157,7 +182,7 @@ def plan_items(pdf, page_no):
     """Structure labels and pipe labels in the plan view (above the profile), as text lines with boxes (points)."""
     page = open_pdf(pdf)[page_no - 1]
     top = profile_top(page)
-    labels, pipes = [], []
+    labels, pipes, drives = [], [], []
     for b in page.get_text("dict")["blocks"]:
         for ln in b.get("lines", []):
             r = pymupdf.Rect(ln["bbox"])
@@ -176,7 +201,12 @@ def plan_items(pdf, page_no):
                 for part in rest.split(";"):
                     for pp in pipes_in(part):
                         pipes.append(dict(pipe=pp, rect=list(r), text=norm(part)))
-    return labels, pipes
+            # driveway pipe labels ("40' - XX\" ALT REQ'D."): the XX size does not parse as a pipe run above
+            for part in rest.split(";"):
+                part = norm(part)
+                if DRIVE_PIPE.search(part) and re.search(r"XX\"|\bALT\b", part) and not OPENING.search(part):
+                    drives.append(dict(parts=pipe_parts(part), rect=list(r), text=part))
+    return labels, pipes, drives
 
 
 def main():
@@ -197,14 +227,20 @@ def main():
                 xs.append(p["pdf_page"])
     F, checks = [], []
 
-    def add(sev, sids, pages, finding, evidence, fix, locate):
+    def add(sev, sids, pages, finding, evidence, fix, locate, n=None, disc=None):
+        """n: the note the flag is about (its plan/profile/XS text goes in the workbook row); disc: short discrepancy."""
         F.append(dict(id=f"NM-{len(F) + 1:03d}", task="notematch", severity=sev, sheet_ids=sids, pdf_pages=pages,
-                      finding=finding, evidence=evidence, suggested_fix=fix, locate=locate))
+                      finding=finding, evidence=evidence, suggested_fix=fix, locate=locate, discrepancy=disc or finding,
+                      _n=n))
+
+    def sh_of(q):
+        return sheet.get(q, f"p{q}")
 
     prof = extract_notes(a.pdf, wk)
     by_id = {}
     for n in prof:
         n["sid"] = sid_of(n["lines"][0])
+        n["plan_txt"], n["xs_txt"] = [], None
         if n["sid"]:
             by_id.setdefault(n["sid"], []).append(n)
 
@@ -215,9 +251,10 @@ def main():
         p = n["page"]
         if p not in plan_cache:
             plan_cache[p] = plan_items(a.pdf, p)
-        labels, pipes = plan_cache[p]
-        sh = sheet.get(p, f"p{p}")
+        labels, pipes = plan_cache[p][:2]
+        sh = sh_of(p)
         lab = [l for l in labels if l["id"] == sid]
+        lab_page = p
         if n["sid"] and not lab:   # tag drawn on the LT/RT partner sheet only
             for q in wk:
                 if q != p and sheet_name(a.pdf, q) and sheet_name(a.pdf, p) and \
@@ -226,19 +263,23 @@ def main():
                         plan_cache[q] = plan_items(a.pdf, q)
                     lab = [l for l in plan_cache[q][0] if l["id"] == sid]
                     if lab:
+                        lab_page = q
                         break
         n_pipes = []
-        for line in n["lines"]:
+        for line in ([] if kind_of(n) == "driveway" else n["lines"]):   # driveway pipes: checked further down
             if "@" in line or "OPENINGS" in line:
                 continue  # openings ("1 @ 18\"") are not pipe runs
             n_pipes += [pp for pp in pipes_in(line) if pp[0] >= 1]
         loc_prof = [dict(page=p, rect=n["bbox"])]
         if n["sid"] and not lab:
+            n["plan_txt"].append(f"MISSING: no [{sid}] label in the plan view")
             add("medium", [sh], [p], f"{sid}: structure label not found in the plan view of {sh}",
                 f"profile note {sid} at STA {n['lines'][1] if len(n['lines']) > 1 else ''}", "Check the plan label",
-                loc_prof)
+                loc_prof, n=n, disc=f"MISSING in plan: structure label [{sid}]")
             checks.append(dict(kind="plan", id=sid, page=p, result="label missing"))
             continue
+        if lab:
+            n["plan_txt"].append(f"{sh_of(lab_page)}: [{sid}]")
         L = lab[0] if lab else dict(rect=n["bbox"])
         # pipe labels can sit anywhere along the run, or on the LT/RT partner sheet when the pipe crosses the road
         # where to look: this sheet, its LT/RT partner, every sheet showing the same structure label, and the two
@@ -260,28 +301,58 @@ def main():
             pool += [(q, pp) for pp in plan_cache[q][1]]
         lx = (L["rect"][0] + L["rect"][2]) / 2
         for npipe in n_pipes:
+            prof_pipe = f"{npipe[0]:g}' - {npipe[1]}\" {npipe[2] or ''}".strip()
             same = [(q, pp) for q, pp in pool if pp["pipe"][0] == npipe[0] and pp["pipe"][1] == npipe[1]]
             same.sort(key=lambda t: (t[0] != p, abs((t[1]["rect"][0] + t[1]["rect"][2]) / 2 - lx)))
             if same:
                 q, best = same[0]
+                n["plan_txt"].append(f"{sh_of(q)}: {best['text']}")
                 ok_mat = npipe[2] is not None and same_material(best["pipe"][2], npipe[2], npipe[1])
                 checks.append(dict(kind="plan", id=sid, page=p, profile=npipe, plan=best["text"], plan_page=q,
                                    result="match" if ok_mat else "material differs"))
                 if not ok_mat:
                     what = "has no material" if npipe[2] is None else f"says {npipe[2]}"
                     add("medium", [sh], [p], f"{sid}: profile note pipe line {what}; plan label says "
-                                             f"'{best['text']}' on {sheet.get(q, f'p{q}')}",
-                        f"profile pipe {npipe[0]:g}' - {npipe[1]}\" {npipe[2] or ''} | plan: {best['text']}",
-                        "Make plan and profile agree", loc_prof + [dict(page=q, rect=best["rect"])])
+                                             f"'{best['text']}' on {sh_of(q)}",
+                        f"profile pipe {prof_pipe} | plan: {best['text']}",
+                        "Make plan and profile agree", loc_prof + [dict(page=q, rect=best["rect"])], n=n,
+                        disc=f"pipe material: plan '{best['text']}' vs profile '{prof_pipe}'")
             else:
                 nearest = sorted(pipes, key=lambda pp: abs((pp["rect"][0] + pp["rect"][2]) / 2 - lx))[:2]
                 plan_txt = "; ".join(pp["text"] for pp in nearest) or "no pipe labels in plan view"
+                n["plan_txt"].append(f"MISSING: no {prof_pipe} label (nearest: {plan_txt})")
                 checks.append(dict(kind="plan", id=sid, page=p, profile=npipe, plan=plan_txt, result="mismatch"))
-                add("high", [sh], [p], f"{sid}: profile note pipe {npipe[0]:g}' - {npipe[1]}\" "
-                                       f"{npipe[2] or '(no material)'} has no matching pipe label in the plan view "
-                                       f"of {sh} or nearby sheets",
+                add("high", [sh], [p], f"{sid}: profile note pipe {prof_pipe or '(no material)'} has no matching pipe "
+                                       f"label in the plan view of {sh} or nearby sheets",
                     f"nearest plan labels: {plan_txt}", "Make the plan label and the profile note agree",
-                    loc_prof + [dict(page=p, rect=pp["rect"]) for pp in nearest] + ([dict(page=p, rect=L["rect"])] if lab else []))
+                    loc_prof + [dict(page=p, rect=pp["rect"]) for pp in nearest] + ([dict(page=p, rect=L["rect"])] if lab else []),
+                    n=n, disc=f"MISSING in plan: pipe label {prof_pipe} (nearest plan labels: {plan_txt})")
+        # driveways: a DRY drive has no plan label; a drive pipe written with an XX size is matched on length
+        if kind_of(n) == "driveway":
+            dpipe = drive_fields(n)["pipe"]
+            if pipe_parts(dpipe) == "DRY":
+                n["plan_txt"] = ["N/A (DRY)"]
+            elif dpipe:
+                dpool = [(q, d) for q in [p] + partner for d in plan_cache[q][2]]
+                nx = (n["bbox"][0] + n["bbox"][2]) / 2
+                same = [(q, d) for q, d in dpool if isinstance(d["parts"], tuple) and
+                        d["parts"][0] == pipe_parts(dpipe)[0]]
+                same.sort(key=lambda t: (t[0] != p, abs((t[1]["rect"][0] + t[1]["rect"][2]) / 2 - nx)))
+                if same:
+                    q, best = same[0]
+                    n["plan_txt"].append(f"{sh_of(q)}: {best['text']}")
+                    diffs = pipe_diffs(best["text"], dpipe, "plan", "profile")
+                    checks.append(dict(kind="plan", id=sid, page=p, profile=dpipe, plan=best["text"], plan_page=q,
+                                       result="match" if not diffs else "mismatch", diffs=diffs))
+                    if diffs:
+                        add("medium", [sh, sh_of(q)], sorted({p, q}),
+                            f"{sid}: driveway pipe label in the plan ({sh_of(q)}) does not match the profile note",
+                            "; ".join(diffs), "Make the plan label and the profile note agree",
+                            loc_prof + [dict(page=q, rect=best["rect"])], n=n, disc="; ".join(diffs))
+                else:
+                    n["plan_txt"].append("not found (check by eye)")
+                    checks.append(dict(kind="plan", id=sid, page=p, profile=dpipe, plan=None,
+                                       result="drive pipe label not found: check by eye"))
 
     # ---- profile note vs cross-section note (exact)
     if xs:
@@ -322,14 +393,18 @@ def main():
                 # reader cannot pick it up; the drive line is there, so it is not missing. Compare it by eye.
                 checks.append(dict(kind="xs", id=sid, page=n["page"], note_kind=kind, xs_page=hit,
                                    result="xs text only (no STA. line): compare by eye"))
+                n["xs_txt"] = f"{sh_of(hit)}: drive line found without its own STA. line (check by eye)"
                 continue
             if not cands:
                 checks.append(dict(kind="xs", id=sid, page=n["page"], note_kind=kind, result="no xs note"))
+                n["xs_txt"] = "MISSING"
+                if kind == "other":   # silt basins, barrier, bridge notes: not part of the drainage/driveway rule
+                    continue
                 add("medium", [sh], [n["page"]],
                     f"{KIND_LABEL[kind]} {sid}: shown in the profile on {sh} but not on any cross section",
                     f"Profile: {' | '.join(n['lines'][:3])}; XS: not found on any cross-section sheet",
                     "Add the note to the cross section (or remove it from the profile)",
-                    [dict(page=n["page"], rect=n["bbox"])])
+                    [dict(page=n["page"], rect=n["bbox"])], n=n, disc="MISSING on cross section")
                 continue
             x0 = min(cands, key=lambda c: abs(c["sta"] - n["sta"]))
             # the same structure is often noted on two cross-section sheets (sheet breaks): check every copy
@@ -337,13 +412,16 @@ def main():
             texts = {}
             for c in copies:
                 texts.setdefault(tuple(norm(t) for t in c["lines"]), []).append(c)
+            n["xs_txt"] = "; ".join(f"{', '.join(sorted({sh_of(c['page']) for c in cs}))}: {' | '.join(t)}"
+                                    for t, cs in texts.items())
             if len(texts) > 1:
                 xshs = sorted({sheet.get(c["page"], f"p{c['page']}") for c in copies})
                 add("high", xshs, sorted({c["page"] for c in copies}),
                     f"{sid}: the cross-section notes for this structure disagree ({', '.join(xshs)})",
                     " || ".join(" | ".join(c["lines"]) for c in copies)[:600],
                     "Make every cross-section copy of this note identical (and match the profile)",
-                    [dict(page=c["page"], rect=c["bbox"]) for c in copies])
+                    [dict(page=c["page"], rect=c["bbox"]) for c in copies], n=n,
+                    disc=f"cross-section copies disagree ({', '.join(xshs)})")
             for x in copies:
                 a_l, b_l = [norm(t) for t in n["lines"]], [norm(t) for t in x["lines"]]
                 diffs = drive_diffs(n, x) if kind == "driveway" and not n["sid"] else None
@@ -361,7 +439,8 @@ def main():
                 add("high", [sh, xsh], [n["page"], x["page"]],
                     f"{KIND_LABEL[kind]} {sid}: profile note on {sh} does not match the cross-section note on {xsh}",
                     "; ".join(diffs[:4]), "Make the profile and cross-section notes identical",
-                    [dict(page=n["page"], rect=n["bbox"]), dict(page=x["page"], rect=x["bbox"])])
+                    [dict(page=n["page"], rect=n["bbox"]), dict(page=x["page"], rect=x["bbox"])], n=n,
+                    disc="; ".join(diffs[:6]))
 
         # ---- the other direction: a cross-section note (drainage structure or driveway) with no profile note.
         # Proposed drainage and driveway notes always appear on both the profile and the cross section, so a note
@@ -373,6 +452,8 @@ def main():
             if not x["lines"] or not XS_NOTE.search(" ".join(x["lines"])):
                 continue
             kind = kind_of(x)
+            if kind == "other":   # only drainage and driveway notes must appear on both views
+                continue
             if x["sid"]:
                 matched = x["sid"] in prof_sids
             elif kind == "driveway":   # a profile driveway note on the same side within STA_TOL
@@ -389,11 +470,15 @@ def main():
             if kind == "driveway" and not x["sid"] and side_of(x) and side_of(x) not in label:
                 label += f" {side_of(x)}."
             checks.append(dict(kind="xs_reverse", id=label, page=x["page"], note_kind=kind, result="no profile note"))
+            plan_pages = [q for q in wk if x["sid"] and any(l["id"] == x["sid"] for l in plan_cache[q][0])] \
+                if plan_cache else []
+            xn = dict(x, xs_only=True, xs_txt=f"{xsh}: {' | '.join(norm(t) for t in x['lines'])}",
+                      plan_txt=[f"{sh_of(q)}: [{x['sid']}]" for q in plan_pages] if x["sid"] else [], key=label)
             add("medium", [xsh], [x["page"]],
                 f"{KIND_LABEL[kind]} {label}: shown on cross section {xsh} but not in the profile",
                 f"Profile: not found on any WK profile; XS: {' | '.join(x['lines'][:3])}",
                 "Add the note to the profile (or remove it from the cross section)",
-                [dict(page=x["page"], rect=x["bbox"])])
+                [dict(page=x["page"], rect=x["bbox"])], n=xn, disc="MISSING in profile")
 
     # same structure ID used for different structures (different stations)
     for sid_, ns in by_id.items():
@@ -408,7 +493,8 @@ def main():
             if line in DASHLESS and "=" not in line:
                 add("low", [sheet.get(n["page"], f"p{n['page']}")], [n["page"]],
                     f"{n['lines'][0]}: pipe line is missing the dash between length and size", line,
-                    line.replace("' ", "' - ", 1), [dict(page=n["page"], text=line.split()[0])])
+                    line.replace("' ", "' - ", 1), [dict(page=n["page"], text=line.split()[0])], n=n,
+                    disc=f"profile pipe line missing the dash: '{line}'")
     summary = dict(profile_notes=len(prof), wk_pages=len(set(wk)), xs_pages=len(set(xs)),
                    plan_checks=sum(c["kind"] == "plan" for c in checks),
                    plan_mismatches=sum(c["kind"] == "plan" and c["result"] != "match" for c in checks),
@@ -421,6 +507,28 @@ def main():
                        for k in KIND_LABEL},
                    xs_checks=sum(c["kind"] == "xs" for c in checks),
                    xs_mismatches=sum(c["kind"] == "xs" and c["result"] != "match" for c in checks))
+    def note_rec(n):
+        """What the workbook row shows: station, plan / profile / cross-section note (each with its sheet)."""
+        side = side_of(n) if not n.get("sid") else None
+        head = re.sub(r"^STA\.\s*", "", norm(n["lines"][0])).rstrip(" -")
+        if n.get("sid"):
+            station = f"{fmt_sta(n['sta'])} ({n['sid']})"
+        else:
+            station = head + (f" {side}." if side and side not in head else "")
+        kind = kind_of(n)
+        plan = " ; ".join(n.get("plan_txt") or []) or ("N/A (DRY)" if kind == "driveway" and
+                                                         pipe_parts(drive_fields(n)["pipe"]) == "DRY" else "N/A")
+        profile = "MISSING" if n.get("xs_only") else f"{sh_of(n['page'])}: {' | '.join(norm(t) for t in n['lines'])}"
+        xs_txt = n.get("xs_txt") or ("N/A (no cross-section sheets)" if not xs else "not compared")
+        return dict(key=n.get("key") or (n["sid"] or norm(n["lines"][0])) + f"@{n['sta']:.2f}", station=station,
+                    sta=n["sta"], kind=kind, plan=plan, profile=profile, xs=xs_txt)
+
+    for f in F:
+        n = f.pop("_n")
+        if n:
+            f["note"] = note_rec(n)
+    for n in prof:
+        n.pop("plan_txt", None)
     json.dump(dict(summary=summary, findings=F, checks=checks, profile_notes=prof),
               open(os.path.join(a.out, "note_match.json"), "w"), indent=1)
     print(json.dumps(summary, indent=1))

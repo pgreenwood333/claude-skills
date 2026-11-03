@@ -96,10 +96,12 @@ def cmd_ingest(xlsx, mem, run, work=None):
         if "Review" not in head or "Flag ID" not in head:
             continue
         ri, fi = head.index("Review"), head.index("Flag ID")
-        wi = next((i for i, h in enumerate(head) if h in ("What's Wrong", "Text Found")), 2)
+        wi = next((i for i, h in enumerate(head) if h in ("What's Wrong", "Text Found", "Discrepancy")), 2)
         for row in ws.iter_rows(min_row=2, values_only=True):
-            if row[fi]:
-                answers[row[fi]].append((ws.title, row[0], (row[ri] or "Incorrect").strip(), row[wi]))
+            # a Note Match row can carry several flags of one structure ("NM-004, NM-117"): the answer covers each
+            for fid in str(row[fi] or "").split(","):
+                if fid.strip():
+                    answers[fid.strip()].append((ws.title, row[0], (row[ri] or "Incorrect").strip(), row[wi]))
     counts = Counter()
     for fid, rs in answers.items():
         vals = {a for _, _, a, _ in rs}
