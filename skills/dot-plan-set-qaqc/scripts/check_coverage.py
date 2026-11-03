@@ -128,6 +128,10 @@ def main():
         elif os.path.exists(out):
             os.remove(out)   # stale leftovers from an earlier finalize: recomputed on the next finalize
     print(json.dumps(report, indent=1))
+    # kept for the audit log: the first pass (before any send-back) and the final one
+    first = os.path.join(a.work, "coverage_first.json")
+    save_json(os.path.join(a.work, "coverage_final.json") if a.finalize else
+              (first if not os.path.exists(first) else os.path.join(a.work, "coverage_last.json")), report)
     if failed and not a.finalize:
         print("UNRESOLVED: send each check's `unresolved` and `bad_clears` back to its agent once "
               "(keep it as a flag, or clear it with reason + sheet + what you saw), then re-run; "

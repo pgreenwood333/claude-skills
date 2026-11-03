@@ -32,6 +32,14 @@ Run only what was picked. Indexing (Step 2) always runs, because every check use
 Memory: find `qaqc_memory/` beside the PDF or in a parent folder (the nearest one wins); if there is none, create it
 beside the folder that holds the PDF. If `qaqc_memory/lessons.md` exists, read it now and give each agent and the
 grader its section. These are the engineer's approved corrections from past runs and override the briefs.
+Also read the last entry of `qaqc_memory/audit_log.md` if it exists: its "How it will improve" list is what this run
+should do better.
+
+Audit log (every run, as you go): log one line per event with
+`python3 $S/audit_log.py event qaqc_work <kind> "<text>"`, kinds `ran` (every skill, script and agent you run, with
+model and effort), `looked` (anything you inspected that the numbers will not show, e.g. renders), `problem`
+(anything that failed, could not be read, or that an agent got wrong), `decision` (calls you made and why) and
+`improve` (what should change next time, including brief or script fixes). Step 7 turns them into the run's entry.
 
 ## Step 1: Set up
 
@@ -157,7 +165,10 @@ how many revision rounds ran. Link both output files.
 
 ```bash
 python3 $S/learn.py record qaqc_work <qaqc_memory> --plan-set "<pdf name>"
+python3 $S/audit_log.py append qaqc_work <qaqc_memory> --run <run_id from record> --plan-set "<pdf name>" --checks <chosen,tasks>
 ```
+The second line appends this run's entry to `qaqc_memory/audit_log.md` (what was looked at, what ran, results, what
+went wrong, decisions, how it will improve). It only ever appends. Link the file in the report.
 This logs every flag with the grader's and your verdict. Tell the user the run ID it prints and that they can
 correct any flag later ("SPL-005 was wrong, that's the street's real name"; "you missed X on WK-4"). When they do:
 `learn.py feedback <qaqc_memory> <run_id> <id> confirmed|rejected|missed "<their words>" [--task <task>]`.

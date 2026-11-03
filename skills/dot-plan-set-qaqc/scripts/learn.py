@@ -15,6 +15,8 @@
 Files in <memory_dir> (keep it with the user's plan-set folders, never inside the skill):
   ledger.jsonl  one line per flag per run: run, task, rule/keywords, grader verdict, engineer verdict, notes
   lessons.md    approved lessons, one section per check; agents and the grader read it at the start of a run
+  audit_log.md  one readable entry per run, appended by audit_log.py (what it looked at, what ran, what went
+                wrong, how it will improve)
 Safety against learning the wrong thing (drift):
   - The engineer's verdict outranks the grader's; a lesson is only proposed when the same pattern shows up in at
     least 2 different runs; nothing reaches lessons.md without the engineer's OK (`accept`).
