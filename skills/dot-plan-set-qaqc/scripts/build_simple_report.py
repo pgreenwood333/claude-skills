@@ -43,10 +43,12 @@ def status(f):
 
 def start_review(f):
     """Where a row's Review dropdown starts: the engineer's earlier answer, else Unsure / Incorrect."""
-    return f.get("engineer_review") or ("Unsure" if status(f) == "Unsure" else "Incorrect")
+    return f.get("engineer_review") or ("Unsure" if status(f) == "Unsure" or f.get("unsure") else "Incorrect")
 
 
 def why_unsure(f):
+    if status(f) != "Unsure" and f.get("unsure"):   # facts confirmed, but whether it is a problem is the engineer's call
+        return "Unsure (your call): " + f["unsure"]
     return "Unsure: " + ((f.get("review") or {}).get("note") or f.get("unsure")
                          or "needs the engineer to check it on the sheet")
 
@@ -103,12 +105,17 @@ def notematch_rows(flags, sid_by_page):
         groups.setdefault(key, []).append(f)
     rows = []
     for key, fs in groups.items():
-        n = next((f["note"] for f in fs if f.get("note")), None)
+        # several flags can carry the same structure's note; a reviewer may have corrected one of them (a label found
+        # later, a missing tag identified), so prefer the note with the fewest open placeholders, then the later edit
+        notes = [f["note"] for f in fs if f.get("note")]
+        open_ = lambda nn: sum(str(nn.get(k, "")).count(t) for k in ("plan", "profile", "xs")
+                               for t in ("check by eye", "not compared"))
+        n = min(reversed(notes), key=open_) if notes else None
         lines = []
         for f in fs:
             lines += disc_lines(f.get("discrepancy")) if f.get("discrepancy") else \
                 [short(f.get("finding")), mismatch(f.get("evidence"))]
-            if status(f) == "Unsure":
+            if status(f) == "Unsure" or f.get("unsure"):
                 lines.append(short(why_unsure(f), 260))
         lines = list(dict.fromkeys(lines))
         disc = "\n".join(("• " + l if len(lines) > 1 else l) for l in lines)
@@ -197,7 +204,8 @@ def main():
         ft = [f for f in findings if f["task"] == t]
         kept = [f for f in ft if status(f) == "Confirmed"]
         ws.append([name] + [sum(1 for f in kept if f["severity"] == s) for s in ("high", "medium", "low")]
-                  + [sum(1 for f in ft if status(f) == "Unsure"), sum(1 for f in ft if status(f) == "Rejected")])
+                  + [sum(1 for f in ft if status(f) == "Unsure" or (status(f) == "Confirmed" and f.get("unsure"))),
+                     sum(1 for f in ft if status(f) == "Rejected")])
     ws.append([])
     ws.append(["Counts are flags; a flag that repeats on several sheets is one flag but one row per sheet in its tab."])
     ws.column_dimensions["A"].width = 22
@@ -212,7 +220,7 @@ def main():
             pri = PRIORITY.get(f.get("severity"), "")
             quotes = QUOTE.findall(f.get("evidence", ""))
             tag = dict(id=f["id"], review=start_review(f))
-            unsure = status(f) == "Unsure"
+            unsure = status(f) == "Unsure" or bool(f.get("unsure"))
             if t == "notematch":   # grouped per structure / driveway below
                 continue
             for sid, pg in rows_for(f, sid_by_page):

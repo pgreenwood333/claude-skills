@@ -54,6 +54,7 @@ def cmd_append(work, mem, run, plan_set, checks):
     cov2 = load_json(os.path.join(work, "coverage_final.json"), {}) or {}
     data = load_json(os.path.join(work, "findings_reviewed.json"), {}) or {}
     grade = load_json(os.path.join(work, "grade.json"), {}) or {}
+    rounds = [g for g in (load_json(os.path.join(work, "grade_round1.json"), {}) or {}, grade) if g]
     F = data.get("findings", [])
     checks = checks or data.get("tasks") or sorted({f.get("task") for f in F})
 
@@ -70,7 +71,7 @@ def cmd_append(work, mem, run, plan_set, checks):
                       "by-eye check")
         for k, v in (s.get("one_sided_by_kind") or {}).items():
             if v.get("profile_only") or v.get("xs_only"):
-                looked.append(f"  {k}: {v.get('profile_only', 0)} shown in the profile only, "
+                looked.append(f"  script, before review: {k} {v.get('profile_only', 0)} shown in the profile only, "
                               f"{v.get('xs_only', 0)} on the cross section only")
     looked += by("looked")
 
@@ -79,13 +80,21 @@ def cmd_append(work, mem, run, plan_set, checks):
     for t in checks:
         ft = [f for f in F if f.get("task") == t]
         v = Counter((f.get("review") or {}).get("verdict", "uncertain") for f in ft)
+        call = sum(1 for f in ft if (f.get("review") or {}).get("verdict") == "confirmed" and f.get("unsure"))
+        sev = Counter(f.get("severity") for f in ft if (f.get("review") or {}).get("verdict") == "confirmed")
         if ft or t in cov2 or t in cov1:
-            res.append(f"{NAMES.get(t, t)}: {v.get('confirmed', 0)} confirmed, {v.get('uncertain', 0)} Unsure, "
-                       f"{v.get('rejected', 0)} rejected")
-    if grade:
-        sb = "; ".join(f"{NAMES.get(t, t)} {c.get('score', '')}".strip() for t, c in (grade.get("checks") or {}).items())
-        res.append(f"Grader: {grade.get('result', '?')}" + (f" ({sb})" if sb else "")
-                   + (f", {grade.get('rounds')} revision round(s)" if grade.get("rounds") is not None else ""))
+            res.append(f"{NAMES.get(t, t)}: {v.get('confirmed', 0)} confirmed (high {sev.get('high', 0)}, medium "
+                       f"{sev.get('medium', 0)}, low {sev.get('low', 0)}), {v.get('uncertain', 0) + call} Unsure "
+                       f"({call} of them confirmed facts left to the engineer's call), {v.get('rejected', 0)} rejected")
+    for i, g in enumerate(rounds, 1):
+        def score(c):
+            sc = c.get("scores") or {}
+            if isinstance(sc, dict) and sc:
+                fails = [k for k, v in sc.items() if str(v).lower().startswith("fail")]
+                return f"{len(sc) - len(fails)}/{len(sc)}" + (f", failed criteria {', '.join(fails)}" if fails else "")
+            return str(c.get("score", ""))
+        sb = "; ".join(f"{NAMES.get(t, t)} {score(c)}".strip() for t, c in (g.get("checks") or {}).items())
+        res.append(f"Grader round {i}: {g.get('result', '?')}" + (f" ({sb})" if sb else ""))
 
     # ---- what went wrong
     wrong = []
@@ -103,13 +112,16 @@ def cmd_append(work, mem, run, plan_set, checks):
     for t, n in Counter(f.get("task") for f in rej).items():
         reasons = [((f.get("review") or {}).get("note") or "")[:110] for f in rej if f.get("task") == t][:3]
         wrong.append(f"{NAMES.get(t, t)}: {n} flag(s) rejected on review, e.g. " + " | ".join(r for r in reasons if r))
-    for t, c in (grade.get("checks") or {}).items():
-        for m in c.get("missed", [])[:5]:
-            wrong.append(f"{NAMES.get(t, t)} missed: {m.get('what') if isinstance(m, dict) else m}")
+    for i, g in enumerate(rounds, 1):
+        for t, c in (g.get("checks") or {}).items():
+            for m in c.get("missed", [])[:5]:
+                wrong.append(f"Grader round {i} found a miss in {NAMES.get(t, t)} (see Decisions for how it was "
+                             f"handled): {m.get('what') if isinstance(m, dict) else m}")
     wrong += by("problem")
 
     # ---- how it will improve
-    imp = by("improve") + [f"Proposed lesson (needs your OK): {l}" for l in grade.get("lessons", [])]
+    imp = by("improve") + [f"Proposed lesson (needs your OK): {l}"
+                           for l in dict.fromkeys(l for g in rounds for l in g.get("lessons", []))]
     lessons_p = os.path.join(mem, "lessons.md")
     if os.path.exists(lessons_p):
         n = sum(1 for l in open(lessons_p) if l.startswith("- "))
