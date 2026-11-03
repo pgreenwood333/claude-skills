@@ -165,6 +165,8 @@ def main():
     for i, f in enumerate(F, 1):
         f["id"] = f"IDX-{i:03d}"
     save_json(out, dict(findings=F))
+    # the script's own flags, kept apart so check_coverage.py can tell if the agent dropped one
+    save_json(os.path.join(os.path.dirname(os.path.abspath(sys.argv[2])), "script_findings.json"), dict(findings=F))
     print(json.dumps({s: sum(f["severity"] == s for f in F) for s in ("high", "medium", "low")}))
 
 

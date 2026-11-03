@@ -33,3 +33,22 @@ Write `{"findings": [ ... ]}` to the path in your brief. One object per flag:
   Converting a point in a rendered PNG to PDF points: `x_pt = clip_x0 + x_px * 72 / dpi`, same for y.
 - `agent_confidence`: `high`, `medium` or `low`, which tells the orchestrator where to look hardest.
 - Leave `review` out; the orchestrator sets it.
+- `candidate_ids`: the script candidate(s) this finding came from (`OVL-p12-003`, `COL-C-p8-0012`, `SPC-U014`,
+  `NM-E03`…), when your finding's id is not the candidate's own id.
+- `unsure`: one line, when you cannot settle a flag yourself (unreadable, judgment call). Keep the flag and say
+  what the engineer should look at; it reaches the workbook as an Unsure row if no reviewer settles it.
+
+## No skipping (checked by code)
+
+Every candidate your script produced must end in one of two places, and `check_coverage.py` checks it:
+1. **Kept**: a finding in `findings/<task>.json` (same id, or listed in `candidate_ids`). Not sure? Keep it, with `unsure`.
+2. **Cleared**: an entry in `findings/<task>_cleared.json`:
+   ```json
+   {"cleared": [{"ids": ["OVL-p12-003"], "reason": "stacked callout, both labels legible",
+                 "sheet": "WK-12", "seen": "`STA. 235+34.00` above `36' DRIVE REQ'D.`"}]}
+   ```
+   `reason`, `sheet` and `seen` (what you read on the sheet) are required; spelling may clear many words with one
+   reason and no sheet ("DOT abbreviation"). Clear only what you looked at. "Probably fine", "minor",
+   "normally omitted" or "not checked" are not reasons.
+Anything in neither place goes back to you once, then lands in the workbook as Unsure. Your reply gives
+kept / cleared / unsure counts.

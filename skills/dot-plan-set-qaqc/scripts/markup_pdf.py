@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Mark up the plan set with red highlighter for every confirmed finding.
+"""Mark up the plan set: red highlighter for every confirmed finding, amber for every Unsure one (verdict uncertain).
 
-  markup_pdf.py <plans.pdf> <index_dir> <findings_reviewed.json> <out.pdf> [--include-uncertain]
+  markup_pdf.py <plans.pdf> <index_dir> <findings_reviewed.json> <out.pdf> [--confirmed-only]
 
 Each finding's `locate` list says where to highlight:
   {"page": 15, "rect": [x0, y0, x1, y1]}      exact area in PDF points (overlaps, OCR words, anything measured)
@@ -15,12 +15,14 @@ import pymupdf
 from qaqc_common import load_json, save_json, locate_text
 
 RED = (0.85, 0.0, 0.0)
+AMBER = (0.93, 0.55, 0.0)   # Unsure: the engineer decides
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("pdf"); ap.add_argument("index"); ap.add_argument("findings"); ap.add_argument("out")
-    ap.add_argument("--include-uncertain", action="store_true")
+    ap.add_argument("--confirmed-only", action="store_true", help="leave Unsure flags off the PDF")
+    ap.add_argument("--include-uncertain", action="store_true", help=argparse.SUPPRESS)   # old flag: now the default
     a = ap.parse_args()
     data = load_json(a.findings)
     doc = pymupdf.open(a.pdf)
@@ -29,11 +31,16 @@ def main():
     note_slots = {}
     for f in data["findings"]:
         verdict = (f.get("review") or {}).get("verdict", "uncertain")
-        if verdict == "rejected" or (verdict != "confirmed" and not a.include_uncertain):
+        if verdict == "rejected" or (verdict != "confirmed" and a.confirmed_only):
             f["markup"] = "skipped"
             counts["skipped"] += 1
             continue
-        label = f"{f['id']} [{f.get('severity', '').upper()}] {f.get('finding', '')}"
+        unsure = verdict != "confirmed"
+        color = AMBER if unsure else RED
+        label = ("UNSURE (engineer to check): " if unsure else "") + \
+            f"{f['id']} [{f.get('severity', '').upper()}] {f.get('finding', '')}"
+        if unsure and (f.get("review") or {}).get("note"):
+            label += f"\nWhy unsure: {f['review']['note']}"
         if f.get("suggested_fix"):
             label += f"\nSuggested: {f['suggested_fix']}"
         done = False
@@ -53,7 +60,7 @@ def main():
                 rects = found[:1] if near is not None or not loc.get("all") else found
             for r in rects:
                 annot = page.add_highlight_annot(r)
-                annot.set_colors(stroke=RED)
+                annot.set_colors(stroke=color)
                 annot.set_opacity(0.45)
                 annot.set_info(title="QA/QC", content=label)
                 annot.update()
@@ -65,7 +72,7 @@ def main():
             note_slots[page.number] = k + 1
             pt = pymupdf.Point(page.rect.width * 0.86 - (k % 6) * 30, page.rect.height * 0.04 + (k // 6) * 30)
             annot = page.add_text_annot(pt, label + "\n(Location not found automatically.)", icon="Comment")
-            annot.set_colors(stroke=RED)
+            annot.set_colors(stroke=color)
             annot.set_info(title="QA/QC")
             annot.update()
         f["markup"] = "highlighted" if done else "note"
@@ -74,7 +81,9 @@ def main():
     p0 = doc[0]
     n = counts["highlighted"] + counts["note"]
     stamp = pymupdf.Rect(p0.rect.width * 0.02, p0.rect.height * 0.015, p0.rect.width * 0.40, p0.rect.height * 0.055)
-    fa = p0.add_freetext_annot(stamp, f"QA/QC MARKUP: {n} flagged items highlighted in red. "
+    nu = sum(1 for f in data["findings"] if f.get("markup") in ("highlighted", "note")
+             and (f.get("review") or {}).get("verdict") != "confirmed")
+    fa = p0.add_freetext_annot(stamp, f"QA/QC MARKUP: {n - nu} flagged items in red, {nu} Unsure items in amber. "
                                       f"See the QA/QC workbook for details. Flags are for engineer review.",
                                fontsize=14, text_color=RED)
     fa.set_info(title="QA/QC")

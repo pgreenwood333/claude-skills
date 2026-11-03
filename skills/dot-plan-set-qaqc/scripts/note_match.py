@@ -233,6 +233,13 @@ def main():
                       finding=finding, evidence=evidence, suggested_fix=fix, locate=locate, discrepancy=disc or finding,
                       _n=n))
 
+    E = []   # by-eye checks: ready-made flags the agent keeps if the sheet confirms them, or clears with a reason
+
+    def eye(sev, sids, pages, finding, evidence, fix, locate, n, disc, look):
+        E.append(dict(id=f"NM-E{len(E) + 1:02d}", task="notematch", severity=sev, sheet_ids=sids, pdf_pages=pages,
+                      finding=finding, evidence=evidence, suggested_fix=fix, locate=locate, discrepancy=disc,
+                      look=look, _n=n))
+
     def sh_of(q):
         return sheet.get(q, f"p{q}")
 
@@ -353,6 +360,12 @@ def main():
                     n["plan_txt"].append("not found (check by eye)")
                     checks.append(dict(kind="plan", id=sid, page=p, profile=dpipe, plan=None,
                                        result="drive pipe label not found: check by eye"))
+                    eye("medium", [sh], [p], f"{sid}: driveway pipe label not found in the plan view of {sh}",
+                        f"Profile: {' | '.join(n['lines'][:3])}; Plan: no pipe label for {dpipe}",
+                        "Add the driveway pipe label to the plan view", loc_prof, n,
+                        f"MISSING in plan: driveway pipe label ({dpipe})",
+                        f"Plan view of {sh} (and its LT/RT partner) at the drive: is the pipe labelled? If it is, "
+                        "compare the label with the profile note (length, size, ALT/RCP).")
 
     # ---- profile note vs cross-section note (exact)
     if xs:
@@ -394,6 +407,13 @@ def main():
                 checks.append(dict(kind="xs", id=sid, page=n["page"], note_kind=kind, xs_page=hit,
                                    result="xs text only (no STA. line): compare by eye"))
                 n["xs_txt"] = f"{sh_of(hit)}: drive line found without its own STA. line (check by eye)"
+                eye("high", [sh, sh_of(hit)], [n["page"], hit],
+                    f"{KIND_LABEL[kind]} {sid}: profile note on {sh} may not match the cross-section note on {sh_of(hit)}",
+                    f"Profile: {' | '.join(n['lines'][:3])}; XS: drive line on {sh_of(hit)} has no STA. line",
+                    "Make the profile and cross-section notes identical", [dict(page=n["page"], rect=n["bbox"])], n,
+                    f"XS note on {sh_of(hit)} has no STA. line",
+                    f"{sh_of(hit)}: read the drive note by eye and compare it with the profile note line by line; "
+                    "rewrite discrepancy with every difference (the missing STA. line counts).")
                 continue
             if not cands:
                 checks.append(dict(kind="xs", id=sid, page=n["page"], note_kind=kind, result="no xs note"))
@@ -523,13 +543,14 @@ def main():
         return dict(key=n.get("key") or (n["sid"] or norm(n["lines"][0])) + f"@{n['sta']:.2f}", station=station,
                     sta=n["sta"], kind=kind, plan=plan, profile=profile, xs=xs_txt)
 
-    for f in F:
+    for f in F + E:
         n = f.pop("_n")
         if n:
             f["note"] = note_rec(n)
     for n in prof:
         n.pop("plan_txt", None)
-    json.dump(dict(summary=summary, findings=F, checks=checks, profile_notes=prof),
+    summary["eye_checks"] = len(E)
+    json.dump(dict(summary=summary, findings=F, eye_checks=E, checks=checks, profile_notes=prof),
               open(os.path.join(a.out, "note_match.json"), "w"), indent=1)
     print(json.dumps(summary, indent=1))
 

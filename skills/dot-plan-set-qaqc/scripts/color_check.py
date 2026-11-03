@@ -215,7 +215,7 @@ def main():
                 crop = (rect + (-60, -40, 60, 40)) & pr
                 png = os.path.join(a.out, "crops", f"COL-{nid}.png")
                 page.get_pixmap(dpi=250, clip=crop).save(png)
-                cands.append(dict(note, rules=rules, crop=png))
+                cands.append(dict(note, id=f"COL-C-{nid}", rules=rules, crop=png))
         ov = os.path.join(a.out, "overlays", f"p{pno:04d}_{rec['sheet_id']}.png")
         op.get_pixmap(dpi=90).save(ov)
         sheets.append(dict(pdf_page=pno, sheet_id=rec["sheet_id"], text_mode="vector" if vector_mode else "text",

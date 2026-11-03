@@ -29,8 +29,8 @@ The engineer's rules:
    Its summary prints `one_sided_by_kind` (driveway / drainage / other, profile_only / xs_only): put those counts
    in your reply. "Other" notes (silt basins, barrier, pier protection, bridge) are counted but not flagged when
    one-sided: the rule covers drainage and driveway notes only. A one-sided driveway or drainage flag may leave the findings file ONLY when you found the note
-   on the other view, and then your `not_flagged` reason names that sheet and quotes the note (e.g. "on XS-9031
-   as `29' DRIVE REQ'D. LT.`"). If the note is there but says something different, keep a flag and turn it into
+   on the other view, and then its entry in `findings/notematch_cleared.json` names that sheet and quotes the note
+   (`"sheet": "XS-9031", "seen": "`29' DRIVE REQ'D. LT.`"`). If the note is there but says something different, keep a flag and turn it into
    a mismatch. "Normally omitted", "minor" or "probably intentional" are never reasons to drop one.
    Where to look before keeping a flag: the profile note may exist under a typo'd ID (626 B for 262 B) or be
    overprinted so the script could not read it (then it belongs to the overlap check, and the note-match flag
@@ -51,12 +51,22 @@ The engineer's rules:
    - drive pipe labels written with an XX size (`40' - XX" ALT REQ'D.`): length and type (ALT vs RCP) must match the
      profile drive note, the size must match once filled in, and a drawn drive pipe with no label is a finding;
    - plan tags that are not the structure ID (`[SS-2_1]`, `B-9`, a typo like `[338A]` for 388 A).
-6. Write `<work>/findings/notematch.json` with the confirmed findings (copy the script's findings whole, keeping
+6. **By-eye checks are never skipped.** `note_match.json` has an `eye_checks` list: things the script could not
+   read but the sheet may show (a driveway pipe label it could not find in the plan view; an XS drive note with no
+   STA. line of its own). Each one is a ready-made flag (id NM-E01…, with `look` saying where to look). Open every
+   one on the sheet and decide:
+   - the problem is real (no pipe label drawn, or the notes differ) → copy it into your findings, drop `look`, and
+     correct `discrepancy` and `evidence` to what you saw (e.g. `MISSING in plan: driveway pipe label (40'-XX" ALT)`,
+     or `Pipe length: plan 48' vs profile 56'` when the label is there but differs);
+   - it is fine (label there and it agrees) → clear it in `findings/notematch_cleared.json` with the sheet and the
+     text you read;
+   - you cannot tell → keep it with `unsure` saying what to look at.
+7. Write `<work>/findings/notematch.json` with the confirmed findings (copy the script's findings whole, keeping
    their `note` and `discrepancy` fields: the workbook builds its Station / Plan / Profile / Cross Section /
    Discrepancy row from them; a flag you add by eye gets the same two fields when it is about one note, with
    `note.key` equal to that note's key in the script output so it lands in the same row; add any you found
-   by eye with ids NM-101 onward). Format: `references/findings_schema.md`. Never drop a script flag silently: every
-   one ends up either in the file or in a `not_flagged` list in your reply with a one-line reason (e.g. "drive
-   pipe, no plan label expected", "label is on WK-26RT, the previous sheet number").
-Reply with: plan checks, plan mismatches confirmed, XS checks, XS mismatches confirmed, the `not_flagged` list, and
+   by eye with ids NM-X01, NM-X02, … — never NM-1xx, the script numbers its own flags that high). Format: `references/findings_schema.md`. Never drop a script flag silently: every flag and every eye check is kept or cleared under "No
+   skipping" in `references/findings_schema.md` (`findings/notematch_cleared.json`, sheet + text seen, e.g.
+   "label is on WK-26RT, the previous sheet number: `40' - XX\" ALT REQ'D.`"). `check_coverage.py` checks it.
+Reply with: kept / cleared / unsure counts (eye checks separately), plan checks, plan mismatches confirmed, XS checks, XS mismatches confirmed, and
 anything read by eye.

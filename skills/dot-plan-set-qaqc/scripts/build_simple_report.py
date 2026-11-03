@@ -8,9 +8,12 @@ Tabs: Summary (counts), then one tab per check that ran:
   Placeholders (XX) unfilled XX values pulled out of spelling, same columns as the other checks
   Note Match        Sheet ID(s) | PDF Page(s) | What's Wrong | What Doesn't Match | Fix | Priority | Status
   every other check Sheet ID | PDF Page | What's Wrong | Fix | Priority | Status
-plus "Your Call" (flags the engineer decides) and "Rejected" (dismissed on review, kept for the record).
+plus "Rejected" (dismissed on review, kept for the record).
+Check tabs hold the confirmed flags AND the Unsure ones (verdict uncertain: a reviewer could not settle it, or an agent
+left a candidate unresolved); an Unsure row says why ("Unsure: ...") and its dropdown starts at Unsure.
 Every row on a check tab ends with a Review dropdown: Correct (row turns green: fixed on the plans), Incorrect
-(red: still to fix; the default) or N/A (orange: the flag was wrong, nothing to fix). A hidden Flag ID column lets
+(red: still to fix; the default for confirmed flags), Unsure (yellow: needs the engineer to look) or N/A (orange: the
+flag was wrong, nothing to fix). A hidden Flag ID column lets
 `learn.py ingest` read a returned workbook so N/A rows teach the checks. A finding's `engineer_review` field
 pre-sets its dropdown (carry the engineer's earlier answers forward).
 A flag that covers several sheets gets one row per sheet, like a punch list (Note Match: one row per flag, all its sheets listed). Rows sort by sheet order.
@@ -27,7 +30,7 @@ PLACEHOLDER = re.compile(r"\bXX\b|placeholder", re.I)
 TASKS = [("index", "Sheet Order"), ("spelling", "Spelling"), ("placeholder", "Placeholders (XX)"), ("notematch", "Note Match"),
          ("overlap", "Overlapping Text"), ("color", "Print Color"), ("quantity", "Quantities")]
 PRIORITY = {"high": "High", "medium": "Medium", "low": "Low"}
-FILL = {"High": "F4D6D2", "Medium": "FBEBCB", "Low": "E4ECF2", "Confirmed": "E3EFE0", "Your call": "FBEBCB",
+FILL = {"High": "F4D6D2", "Medium": "FBEBCB", "Low": "E4ECF2", "Confirmed": "E3EFE0", "Unsure": "FFF2CC",
         "Rejected": "ECECEC"}
 HEAD = PatternFill("solid", fgColor="2F4858")
 THIN = Side(style="thin", color="C9CED3")
@@ -35,7 +38,17 @@ QUOTE = re.compile(r"`([^`]+)`")
 
 
 def status(f):
-    return {"confirmed": "Confirmed", "rejected": "Rejected"}.get((f.get("review") or {}).get("verdict"), "Your call")
+    return {"confirmed": "Confirmed", "rejected": "Rejected"}.get((f.get("review") or {}).get("verdict"), "Unsure")
+
+
+def start_review(f):
+    """Where a row's Review dropdown starts: the engineer's earlier answer, else Unsure / Incorrect."""
+    return f.get("engineer_review") or ("Unsure" if status(f) == "Unsure" else "Incorrect")
+
+
+def why_unsure(f):
+    return "Unsure: " + ((f.get("review") or {}).get("note") or f.get("unsure")
+                         or "needs the engineer to check it on the sheet")
 
 
 def rows_for(f, sid_by_page):
@@ -95,9 +108,11 @@ def notematch_rows(flags, sid_by_page):
         for f in fs:
             lines += disc_lines(f.get("discrepancy")) if f.get("discrepancy") else \
                 [short(f.get("finding")), mismatch(f.get("evidence"))]
+            if status(f) == "Unsure":
+                lines.append(short(why_unsure(f), 260))
         lines = list(dict.fromkeys(lines))
         disc = "\n".join(("• " + l if len(lines) > 1 else l) for l in lines)
-        reviews = {f.get("engineer_review") or "Incorrect" for f in fs}
+        reviews = {start_review(f) for f in fs}
         tag = dict(id=", ".join(f["id"] for f in fs), review=reviews.pop() if len(reviews) == 1 else "Incorrect")
         if n:
             rows.append([n["station"], n["plan"], n["profile"], n["xs"], disc, n.get("sta", 0), tag])
@@ -115,7 +130,7 @@ def short(text, n=220):
 
 # Engineer's review of each row: Correct = fixed on the plans, Incorrect = still to fix (the default),
 # N/A = the flag was wrong, nothing to fix (read back by learn.py ingest so the checks learn from it).
-REVIEW = {"Correct": "00B050", "Incorrect": "E06666", "N/A": "F6B26B"}
+REVIEW = {"Correct": "00B050", "Incorrect": "E06666", "Unsure": "FFD966", "N/A": "F6B26B"}
 
 
 def table(wb, title, headers, rows, widths, review=False):
@@ -145,8 +160,8 @@ def table(wb, title, headers, rows, widths, review=False):
     if review and rows:
         last = len(rows) + 1
         rc = get_column_letter(len(headers) - 1)
-        dv = DataValidation(type="list", formula1='"Correct,Incorrect,N/A"', allow_blank=False,
-                            showErrorMessage=True, errorTitle="Review", error="Pick Correct, Incorrect or N/A")
+        dv = DataValidation(type="list", formula1='"Correct,Incorrect,Unsure,N/A"', allow_blank=False,
+                            showErrorMessage=True, errorTitle="Review", error="Pick Correct, Incorrect, Unsure or N/A")
         ws.add_data_validation(dv)
         dv.add(f"{rc}2:{rc}{last}")
         span = f"A2:{rc}{last}"
@@ -173,7 +188,7 @@ def main():
     wb = Workbook()
     ws = wb.active
     ws.title = "Summary"
-    ws.append(["Check", "High", "Medium", "Low", "Your call", "Rejected"])
+    ws.append(["Check", "High", "Medium", "Low", "Unsure", "Rejected"])
     for c in ws[1]:
         c.font, c.fill = Font(bold=True, color="FFFFFF"), HEAD
     for t, name in TASKS:
@@ -182,7 +197,7 @@ def main():
         ft = [f for f in findings if f["task"] == t]
         kept = [f for f in ft if status(f) == "Confirmed"]
         ws.append([name] + [sum(1 for f in kept if f["severity"] == s) for s in ("high", "medium", "low")]
-                  + [sum(1 for f in ft if status(f) == "Your call"), sum(1 for f in ft if status(f) == "Rejected")])
+                  + [sum(1 for f in ft if status(f) == "Unsure"), sum(1 for f in ft if status(f) == "Rejected")])
     ws.append([])
     ws.append(["Counts are flags; a flag that repeats on several sheets is one flag but one row per sheet in its tab."])
     ws.column_dimensions["A"].width = 22
@@ -191,21 +206,23 @@ def main():
     for t, name in TASKS:
         if t not in ran:
             continue
-        ft = [f for f in findings if f["task"] == t and status(f) == "Confirmed"]
+        ft = [f for f in findings if f["task"] == t and status(f) in ("Confirmed", "Unsure")]
         rows = []
         for f in ft:
             pri = PRIORITY.get(f.get("severity"), "")
             quotes = QUOTE.findall(f.get("evidence", ""))
-            tag = dict(id=f["id"], review=f.get("engineer_review") or "Incorrect")
+            tag = dict(id=f["id"], review=start_review(f))
+            unsure = status(f) == "Unsure"
             if t == "notematch":   # grouped per structure / driveway below
                 continue
             for sid, pg in rows_for(f, sid_by_page):
                 if t == "spelling":
                     rows.append([sid, pg, quotes[0] if quotes else short(f.get("evidence"), 80),
-                                 short(f.get("suggested_fix"), 120), status(f), short(f.get("finding"), 160), tag])
+                                 short(f.get("suggested_fix"), 120), status(f),
+                                 short(why_unsure(f), 200) if unsure else short(f.get("finding"), 160), tag])
                 else:
-                    rows.append([sid, pg, short(f.get("finding")), short(f.get("suggested_fix"), 160), pri, status(f),
-                                 tag])
+                    wrong = short(f.get("finding")) + ("\n" + short(why_unsure(f), 200) if unsure else "")
+                    rows.append([sid, pg, wrong, short(f.get("suggested_fix"), 160), pri, status(f), tag])
         if t == "spelling":
             rows.sort(key=lambda r: (r[1] if isinstance(r[1], int) else 9999))
             table(wb, name, ["Sheet ID", "PDF Page", "Text Found", "Correct To", "Status", "Notes"], rows,
@@ -217,7 +234,7 @@ def main():
             rows.sort(key=lambda r: (order.get(r[4], 3), r[1] if isinstance(r[1], int) else 9999))
             table(wb, name, ["Sheet ID", "PDF Page", "What's Wrong", "Fix", "Priority", "Status"], rows,
                   [12, 9, 70, 48, 10, 12], review=True)
-    for label, want in (("Your Call", "Your call"), ("Rejected", "Rejected")):
+    for label, want in (("Rejected", "Rejected"),):   # Unsure flags sit in their check's tab
         rows = []
         for f in findings:
             if status(f) != want:
@@ -227,7 +244,7 @@ def main():
                          short((f.get("review") or {}).get("note"), 200)])
         if rows:
             table(wb, label, ["Check", "Sheet ID(s)", "What Was Flagged",
-                              "Why It Needs You" if want == "Your call" else "Why It Was Rejected"], rows, [16, 22, 70, 60])
+                              "Why It Was Rejected"], rows, [16, 22, 70, 60])
     wb.save(sys.argv[3])
     print(f"wrote {sys.argv[3]}")
 

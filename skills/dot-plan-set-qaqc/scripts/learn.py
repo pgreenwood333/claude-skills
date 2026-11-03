@@ -113,6 +113,8 @@ def cmd_ingest(xlsx, mem, run, work=None):
         elif vals == {"Correct"}:
             cmd_feedback(mem, run, fid, "confirmed", "engineer fixed it on the plans", task=None, quiet=True)
             counts["Correct"] += 1
+        elif "Unsure" in vals:
+            counts["unsure"] += 1   # the engineer has not decided yet: still open, nothing learned
         else:
             counts["open"] += 1
     if work:
@@ -122,7 +124,8 @@ def cmd_ingest(xlsx, mem, run, work=None):
             rs = answers.get(f["id"])
             if rs:
                 vals = {a for _, _, a, _ in rs}
-                f["engineer_review"] = "N/A" if "N/A" in vals else ("Correct" if vals == {"Correct"} else "Incorrect")
+                f["engineer_review"] = "N/A" if "N/A" in vals else ("Correct" if vals == {"Correct"} else
+                                                                       "Unsure" if "Unsure" in vals else "Incorrect")
         json.dump(data, open(p, "w"), indent=1)
     print(json.dumps(dict(flags=len(answers), **counts), indent=1))
     print("Next: `learn.py lessons` to see if the N/A answers point to a rule worth adding.")

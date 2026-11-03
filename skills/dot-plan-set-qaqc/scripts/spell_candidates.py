@@ -97,6 +97,10 @@ def main():
                                    and 0 <= r2[1] - r1[3] < (r1[4] - r1[2]) * 1.5)
         if t1 == t2 and len(t1) > 1 and same_line and t1 not in {"LT", "RT", "EA", "LF", "SY", "CY"}:
             repeated.append(dict(word=t1, **{k: i2[k] for k in ("page", "sheet_id", "rect", "source", "line")}))
+    # every candidate gets an id: the agent keeps it as a flag (candidate_ids) or clears it (check_coverage.py)
+    for pre, L in (("SPC-U", cands), ("SPC-R", repeated), ("SPC-V", variants)):
+        for i, c in enumerate(L, 1):
+            c["id"] = f"{pre}{i:03d}"
     save_json(a.out, dict(unknown=cands, repeated=repeated, variants=variants, likely_names=sorted(names)))
     print(json.dumps(dict(words=len(vocab), unknown=len(cands), repeated=len(repeated), variants=len(variants),
                           likely_names=len(names))))

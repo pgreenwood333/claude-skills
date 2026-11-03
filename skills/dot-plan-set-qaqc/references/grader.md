@@ -17,6 +17,13 @@ Look at the evidence yourself (open the crop, or `build_index.py render <index> 
 Note match, one-sided notes ("shown in the profile ... but not on any cross section" / "shown on cross section ...
 but not in the profile"): reject one only after you search the other view and find the note; your reason names
 that sheet. Not finding it means `confirmed`. Never reject one as minor, normal or intentional.
+Cleared candidates (`qaqc_work/findings/<task>_cleared.json`): the agents cleared these with a sheet and the text
+they read. Check every note-match clear and at least 5 per other check (all of them if fewer): open the sheet and
+confirm the `seen` text is there and the reason holds. A wrong clear goes under `missed` for that check, and two or
+more wrong clears in one check fail criterion 3 (covered).
+Flags marked `unsure` by the agent and flags from `_unresolved` files need a verdict like any other: look at the
+sheet and confirm or reject them. Use `uncertain` only when the sheet truly cannot settle it, and say why in the
+note: that text is what the engineer reads in the Unsure row.
 A flag whose `gate.pass` is false has evidence the code could not find on the sheet. Confirm it only if you can see
 the problem yourself and you correct the evidence to the exact printed text; otherwise reject it as unsupported.
 
@@ -26,7 +33,7 @@ the problem yourself and you correct the evidence to the exact printed text; oth
 |---|---|---|
 | 1 | Grounded | Every confirmed flag quotes text exactly as printed and points at the right spot (highlight lands on it). |
 | 2 | Precise | At most 1 in 5 flags of this check is rejected. |
-| 3 | Covered | The agent's reply shows it looked at every sheet in scope (no sheet skipped silently; unreadable ones listed). |
+| 3 | Covered | The agent looked at every sheet in scope (no sheet skipped silently; unreadable ones listed), `check_coverage.py` shows nothing unresolved, and its clears hold up when spot-checked. |
 | 4 | Spot-check clean | You render 2 sheets in scope the agent did not flag at all and find no obvious miss of this check's kind. |
 | 5 | Right severity | High only where a contractor could build or bid from wrong information. |
 | 6 | Actionable | Each finding says what is wrong and what it should be, with Sheet ID and station when there is one. |

@@ -82,17 +82,29 @@ set a model or effort, run them on the session's model and say so in the report.
 
 Revision rounds (Step 4) re-run a check on the same model and effort.
 
+Tell every agent the no-skip rule (section "No skipping" in `references/findings_schema.md`): each script candidate
+is kept as a flag or cleared in `findings/<task>_cleared.json` with a reason, the sheet and the text it read; when
+unsure, it keeps the flag with `unsure`. It never drops one.
+
 ## Step 4: Gate, grade, revise
 
-You are the final checker, but you do not grade your own team's work alone. Three layers, in this order:
+You are the final checker, but you do not grade your own team's work alone. Four layers, in this order:
+
+0. **Coverage gate (code: nothing skipped).**
+   `python3 $S/check_coverage.py qaqc_work --tasks <chosen,tasks>`
+   Every script candidate must be kept or cleared with reason + sheet + text seen. If it exits 1, send each check's
+   `unresolved` and `bad_clears` back to its agent once, then re-run it. Then run it with `--finalize`: whatever is
+   still unresolved is written to `findings/<task>_unresolved.json` as Unsure flags (never dropped). Report how many.
 
 1. **Evidence gate (code, cannot be argued with).**
    `python3 $S/validate_findings.py "<plans.pdf>" qaqc_work/index qaqc_work`
    Every flag must name the right sheet, land on its page, and quote text that is really printed there. Failures
-   are written into each finding as `gate.problems`. If one check fails the gate on more than 2 flags, send that
+   are written into each finding as `gate.problems`. (Flags in `_unresolved` files are already Unsure and already
+   went back once; their gate result does not trigger another send-back.) If one check fails the gate on more than 2 flags, send that
    agent its list once ("fix the quote to the exact printed text, or drop the flag") and re-run the gate.
 2. **Independent grader (fresh subagent).** Merge first:
    `python3 $S/merge_findings.py qaqc_work --tasks <chosen,tasks>`   # index,spelling,overlap,notematch,color,quantity
+   (it reads `findings/*.json`, so the `_unresolved` files come along; `_cleared` files hold no findings.)
    Then spawn one general-purpose subagent on **opus, high effort** with `references/grader.md`, the PDF, `qaqc_work/index`,
    `qaqc_work/findings_reviewed.json`, `$S`, the checks that ran and the lessons. Do not give it the agents' replies
    or your own opinions: it judges the output only. It writes `qaqc_work/grade.json`.
