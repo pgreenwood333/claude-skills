@@ -56,7 +56,12 @@ def mismatch(evidence, n=500):
         items = m.group(1).replace("`", "").strip() if m else ""
         return (f"Profile: {items}\n" if items else "") + "XS: cross-section note not found"
     out = []
-    for pair in re.split(r";\s+(?=(?:profile|plan|XS)\b)", evidence or "", flags=re.I):
+    for pair in re.split(r";\s+(?=(?:profile|plan|XS)\b|[\w ]+:\s*profile\b)", evidence or "", flags=re.I):
+        # one field or line that differs: "pipe: profile '56' - XX\" ...' vs XS 'DRY'" / "line 3: profile '…' vs XS '…'"
+        m = re.match(r"\s*([\w ]+):\s*profile\s+'(.*)'\s+vs\s+XS\s+'(.*)'\s*$", pair, re.I)
+        if m:
+            out += [f"Profile ({m.group(1)}): {m.group(2)}", f"XS ({m.group(1)}): {m.group(3)}"]
+            continue
         for side in re.split(r"\s+vs\.?\s+", pair):
             side = side.replace("`", "").strip(" ;")
             side = re.sub(r"^(profile|plan|xs)\b", lambda m: {"profile": "Profile", "plan": "Plan", "xs": "XS"}[m.group(1).lower()],

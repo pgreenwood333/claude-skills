@@ -20,6 +20,7 @@ questions; the tool allows at most 4 options per question):
   - Index check: Detailed Index descriptions, Sheet IDs and sheet numbers vs the actual sheets
   - Spelling: misspellings, repeated words, placeholders and inconsistent spellings on every sheet
   - Note match: plan note vs profile note on the WK sheets, and profile note vs cross-section (9000) note
+    (always reports any drainage or driveway note shown in the profile but not the cross section, or vice versa)
 - Question 2 (multiSelect, header "WK checks"): "Which WK plan-profile checks should I run?"
   - Overlapping text, profile view only (Recommended)
   - Overlapping text, profile and plan view (plan view is noisy because utilities overlap)
@@ -100,6 +101,10 @@ You are the final checker, but you do not grade your own team's work alone. Thre
    re-run the gate, merge, and grade again with a fresh grader. Stop after 2 rounds even if not satisfied, and say
    which criteria still fail in the report.
 
+One-sided notes: every drainage or driveway note shown in the profile but not on the cross section (or the
+reverse) stays in the report unless the agent or grader names the sheet where the other copy was found. Never reject
+one as minor or intentional. Step 6 lists their counts by kind and direction.
+
 Then the final pass is yours. Copy the grader's verdicts to `qaqc_work/reviews.json` and check the ones that matter:
 - Every high-severity flag and every flag the grader marked `uncertain`: render the area (`render ... --clip`
   around the `locate` rect, 250 dpi) and decide.
@@ -130,7 +135,8 @@ marked-up pages to check the highlights sit on the right text, and open the work
 
 ## Step 6: Report in chat
 
-Lead with counts per check (and Table 1 / Table 2 status counts if quantities ran), then the five most important
+Lead with counts per check (for note match, also: drainage and driveway notes shown in the profile only / on the
+cross section only) (and Table 1 / Table 2 status counts if quantities ran), then the five most important
 flags with Sheet IDs, then anything that could not be read. Add the grader's scoreboard per check in one line and
 how many revision rounds ran. Link both output files.
 

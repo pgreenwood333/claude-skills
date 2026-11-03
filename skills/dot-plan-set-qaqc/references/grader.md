@@ -14,6 +14,9 @@ Look at the evidence yourself (open the crop, or `build_index.py render <index> 
 - `rejected`: not a problem (OCR misread, legible stacked labels, values that really match, correct color by the
   rule), or the evidence does not show it. Give the reason in one line.
 - `uncertain`: needs the engineer (judgment call, unreadable source). Say what the engineer should look at.
+Note match, one-sided notes ("shown in the profile ... but not on any cross section" / "shown on cross section ...
+but not in the profile"): reject one only after you search the other view and find the note; your reason names
+that sheet. Not finding it means `confirmed`. Never reject one as minor, normal or intentional.
 A flag whose `gate.pass` is false has evidence the code could not find on the sheet. Confirm it only if you can see
 the problem yourself and you correct the evidence to the exact printed text; otherwise reject it as unsupported.
 

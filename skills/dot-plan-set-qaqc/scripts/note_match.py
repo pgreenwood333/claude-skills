@@ -39,6 +39,57 @@ def sid_of(line):
     return f"{m.group(1)} {m.group(2)}" if m else None
 
 
+DRIVE_NOTE = re.compile(r"\bDRIVE REQ", re.I)   # a driveway note, not a street name ("TRUMAN DRIVE")
+DRAIN_WORDS = re.compile(r"PIPE|RCP|RCAP|CULV|BOX|INLET|JUNCTION|\bJB\b|HEADWALL|FLOWABLE|EXIST|INV\.|SS-\d", re.I)
+KIND_LABEL = {"driveway": "Driveway", "drainage": "Drainage", "other": "Note"}
+DRIVE_PIPE = re.compile(r"\d+(?:\.\d+)?'\s*-?\s*(?:\d+|XX)\"")   # 40'-XX" ALT. PIPE / 40' - 18" RCP
+STA_TOL = 2.0   # ft: a driveway note on the XS within this of the profile station (and same side) is the same drive
+
+
+def kind_of(note):
+    """driveway / drainage / other, from the note text."""
+    text = " ".join(note["lines"])
+    if DRIVE_NOTE.search(text):
+        return "driveway"
+    return "drainage" if note.get("sid") or DRAIN_WORDS.search(text) else "other"
+
+
+def side_of(note):
+    """LT/RT of a station-headed note: on the station line (profile) or the drive line (XS)."""
+    for line in note["lines"][:2]:
+        m = re.search(r"\b(LT|RT)\.?\s*$", norm(line))
+        if m:
+            return m.group(1)
+    return None
+
+
+def same_side(a, b):
+    sa, sb = side_of(a), side_of(b)
+    return sa is None or sb is None or sa == sb
+
+
+def drive_fields(note):
+    """Driveway note content, independent of line layout: station, side, drive width, pipe line (or DRY)."""
+    L = [norm(t) for t in note["lines"]]
+    width = next((m.group(1) for t in L if (m := re.search(r"(\d+)'\s*DRIVE", t))), None)
+    k = next((i for i, t in enumerate(L) if DRIVE_NOTE.search(t)), 0)   # the pipe (or DRY) line follows the drive line
+    pipe = next((re.sub(r"\s*-\s*", " - ", t) for t in L[k + 1:] if DRIVE_PIPE.search(t) or t.rstrip(".") == "DRY"), None)
+    return dict(station=fmt_sta(note["sta"]), side=side_of(note), width=width and f"{width}'", pipe=pipe)
+
+
+def drive_diffs(n, x):
+    """Differences between a profile and an XS driveway note ([] = same). An XX size in one matches any size."""
+    a, b = drive_fields(n), drive_fields(x)
+    out = []
+    for k in ("station", "side", "width", "pipe"):
+        va, vb = a[k], b[k]
+        if k == "pipe" and va and vb and ('XX"' in va) != ('XX"' in vb):
+            va, vb = (re.sub(r'\d+"|XX"', 'XX"', v) for v in (va, vb))
+        if va != vb:
+            out.append(f"{k}: profile '{a[k] or '(missing)'}' vs XS '{b[k] or '(missing)'}'")
+    return out
+
+
 def fmt_sta(v):
     return f"{int(v // 100)}+{v % 100:05.2f}"
 
@@ -235,19 +286,49 @@ def main():
     # ---- profile note vs cross-section note (exact)
     if xs:
         xsn = extract_notes(a.pdf, xs, region=(0.02, 0.03, 0.92, 0.97))
+        for x in xsn:
+            x["sid"] = sid_of(x["lines"][0]) if x["lines"] else None
+        xs_lines = {q: [norm(t) for t in open_pdf(a.pdf)[q - 1].get_text().splitlines()] for q in xs}
+
+        def drive_text_on_xs(n):
+            """XS page holding this drive's line ("29' DRIVE REQ'D. LT.") next to a station label within STA_TOL."""
+            f = drive_fields(n)
+            if not f["width"]:
+                return None
+            want = re.compile(rf"^{re.escape(f['width'])}\s*DRIVE REQ'?D\.?\s*{f['side'] or ''}", re.I)
+            for q, L in xs_lines.items():
+                if not any(want.match(t) for t in L):
+                    continue
+                for t in L:
+                    m = re.search(r"(\d{2,4})\+(\d{2}(?:\.\d+)?)", t)
+                    if m and abs(int(m.group(1)) * 100 + float(m.group(2)) - n["sta"]) <= STA_TOL:
+                        return q
+            return None
         for n in prof:
             sid = n["sid"] or n["lines"][0]
-            for x in xsn:
-                x.setdefault("sid", sid_of(x["lines"][0]) if x["lines"] else None)
+            kind = kind_of(n)
             cands = [x for x in xsn if x["sid"] == n["sid"]] if n["sid"] else []
-            if not cands:   # fall back to station, but never pair two different structure IDs (337 A vs 337 B)
+            if not cands and kind == "driveway":
+                # driveway notes are laid out differently on the XS ("STA. 235+34.00" / "36' DRIVE REQ'D. LT.")
+                # than in the profile ("STA. 235+34.00 LT." / "36' DRIVE REQ'D."): pair by station and side
+                cands = [x for x in xsn if not x["sid"] and kind_of(x) == "driveway" and same_side(n, x)
+                         and abs(x["sta"] - n["sta"]) <= STA_TOL]
+            elif not cands:   # fall back to station, but never pair two different structure IDs (337 A vs 337 B)
                 cands = [x for x in xsn if abs(x["sta"] - n["sta"]) < 0.005 and len(x["lines"]) > 2
                          and x["lines"][1:3] == n["lines"][1:3] and x["sid"] == n["sid"]]
             sh = sheet.get(n["page"], f"p{n['page']}")
+            if not cands and kind == "driveway" and (hit := drive_text_on_xs(n)):
+                # the XS note has no "STA." line of its own (it sits under the section's station label), so the note
+                # reader cannot pick it up; the drive line is there, so it is not missing. Compare it by eye.
+                checks.append(dict(kind="xs", id=sid, page=n["page"], note_kind=kind, xs_page=hit,
+                                   result="xs text only (no STA. line): compare by eye"))
+                continue
             if not cands:
-                checks.append(dict(kind="xs", id=sid, page=n["page"], result="no xs note"))
-                add("medium", [sh], [n["page"]], f"{sid}: no cross-section note found for this profile note",
-                    " | ".join(n["lines"][:3]), "Confirm the structure is noted on its cross section",
+                checks.append(dict(kind="xs", id=sid, page=n["page"], note_kind=kind, result="no xs note"))
+                add("medium", [sh], [n["page"]],
+                    f"{KIND_LABEL[kind]} {sid}: shown in the profile on {sh} but not on any cross section",
+                    f"Profile: {' | '.join(n['lines'][:3])}; XS: not found on any cross-section sheet",
+                    "Add the note to the cross section (or remove it from the profile)",
                     [dict(page=n["page"], rect=n["bbox"])])
                 continue
             x0 = min(cands, key=lambda c: abs(c["sta"] - n["sta"]))
@@ -265,11 +346,12 @@ def main():
                     [dict(page=c["page"], rect=c["bbox"]) for c in copies])
             for x in copies:
                 a_l, b_l = [norm(t) for t in n["lines"]], [norm(t) for t in x["lines"]]
-                if a_l == b_l:
+                diffs = drive_diffs(n, x) if kind == "driveway" and not n["sid"] else None
+                if a_l == b_l or diffs == []:
                     checks.append(dict(kind="xs", id=sid, page=n["page"], xs_page=x["page"], result="match"))
                     continue
-                diffs = []
-                for k in range(max(len(a_l), len(b_l))):
+                diffs = diffs or []
+                for k in range(max(len(a_l), len(b_l)) if not diffs else 0):
                     pa = a_l[k] if k < len(a_l) else "(missing)"
                     pb = b_l[k] if k < len(b_l) else "(missing)"
                     if pa != pb:
@@ -277,31 +359,40 @@ def main():
                 xsh = sheet.get(x["page"], f"p{x['page']}")
                 checks.append(dict(kind="xs", id=sid, page=n["page"], xs_page=x["page"], result="mismatch", diffs=diffs))
                 add("high", [sh, xsh], [n["page"], x["page"]],
-                    f"{sid}: profile note on {sh} does not match the cross-section note on {xsh}",
+                    f"{KIND_LABEL[kind]} {sid}: profile note on {sh} does not match the cross-section note on {xsh}",
                     "; ".join(diffs[:4]), "Make the profile and cross-section notes identical",
                     [dict(page=n["page"], rect=n["bbox"]), dict(page=x["page"], rect=x["bbox"])])
 
         # ---- the other direction: a cross-section note (drainage structure or driveway) with no profile note.
-        # Proposed drainage and driveway notes normally appear on both the profile and the cross section.
+        # Proposed drainage and driveway notes always appear on both the profile and the cross section, so a note
+        # shown on only one of them is always reported (both directions).
         XS_NOTE = re.compile(r"REQ'?D|EXIST\.?\s+PIPE|FLOWABLE", re.I)
         prof_sids = {n["sid"] for n in prof if n["sid"]}
         seen = set()
         for x in xsn:
             if not x["lines"] or not XS_NOTE.search(" ".join(x["lines"])):
                 continue
+            kind = kind_of(x)
             if x["sid"]:
                 matched = x["sid"] in prof_sids
-            else:   # station-headed note (driveway, JB, culvert): any profile note within 1 ft
-                matched = any(abs(n["sta"] - x["sta"]) <= 1.0 for n in prof)
+            elif kind == "driveway":   # a profile driveway note on the same side within STA_TOL
+                matched = any(not n["sid"] and kind_of(n) == "driveway" and same_side(n, x)
+                              and abs(n["sta"] - x["sta"]) <= STA_TOL for n in prof)
+            else:   # station-headed drainage note (JB, culvert): any non-driveway profile note within 1 ft
+                matched = any(kind_of(n) != "driveway" and abs(n["sta"] - x["sta"]) <= 1.0 for n in prof)
             key = (x["sid"] or norm(x["lines"][0]), round(x["sta"], 1))
             if matched or key in seen:
                 continue
             seen.add(key)
             xsh = sheet.get(x["page"], f"p{x['page']}")
             label = x["sid"] or norm(x["lines"][0])
-            checks.append(dict(kind="xs_reverse", id=label, page=x["page"], result="no profile note"))
-            add("medium", [xsh], [x["page"]], f"{label}: cross-section note on {xsh} has no matching profile note",
-                " | ".join(x["lines"][:3]), "Add the note to the profile (or remove it from the cross section)",
+            if kind == "driveway" and not x["sid"] and side_of(x) and side_of(x) not in label:
+                label += f" {side_of(x)}."
+            checks.append(dict(kind="xs_reverse", id=label, page=x["page"], note_kind=kind, result="no profile note"))
+            add("medium", [xsh], [x["page"]],
+                f"{KIND_LABEL[kind]} {label}: shown on cross section {xsh} but not in the profile",
+                f"Profile: not found on any WK profile; XS: {' | '.join(x['lines'][:3])}",
+                "Add the note to the profile (or remove it from the cross section)",
                 [dict(page=x["page"], rect=x["bbox"])])
 
     # same structure ID used for different structures (different stations)
@@ -322,6 +413,12 @@ def main():
                    plan_checks=sum(c["kind"] == "plan" for c in checks),
                    plan_mismatches=sum(c["kind"] == "plan" and c["result"] != "match" for c in checks),
                    xs_without_profile=sum(c["kind"] == "xs_reverse" for c in checks),
+                   profile_without_xs=sum(c["kind"] == "xs" and c["result"] == "no xs note" for c in checks),
+                   one_sided_by_kind={k: dict(
+                       profile_only=sum(c["kind"] == "xs" and c["result"] == "no xs note" and c.get("note_kind") == k
+                                        for c in checks),
+                       xs_only=sum(c["kind"] == "xs_reverse" and c.get("note_kind") == k for c in checks))
+                       for k in KIND_LABEL},
                    xs_checks=sum(c["kind"] == "xs" for c in checks),
                    xs_mismatches=sum(c["kind"] == "xs" and c["result"] != "match" for c in checks))
     json.dump(dict(summary=summary, findings=F, checks=checks, profile_notes=prof),

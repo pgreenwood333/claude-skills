@@ -22,11 +22,22 @@ The engineer's rules:
 3. "No cross-section note found": confirm by searching the XS sheets (`search <index> "<ID>"` and the station). The
    XS note may be laid out differently; if it exists but was not read, compare it by eye line by line and report
    any difference yourself.
-   The check runs both ways: a profile note with no XS note, and an XS note (drainage structure or driveway)
-   with no profile note ("cross-section note ... has no matching profile note"). Proposed drainage and driveway
-   notes normally appear in both. Before keeping a reverse flag, look for the profile note: it may exist under a
-   typo'd ID (626 B for 262 B) or be overprinted so the script could not read it (then it belongs to the overlap
-   check, and the note-match flag points to that overlap finding instead).
+   **One-sided notes are always reported, both ways.** Every proposed drainage note and every driveway note belongs
+   on BOTH the profile and the cross section. The script flags each one shown on only one of them:
+   - "Driveway STA. 448+72.00 LT.: shown in the profile on WK-42LT but not on any cross section"
+   - "Drainage 262 B: shown on cross section XS-9019 but not in the profile"
+   Its summary prints `one_sided_by_kind` (driveway / drainage / other, profile_only / xs_only): put those counts
+   in your reply. A one-sided driveway or drainage flag may leave the findings file ONLY when you found the note
+   on the other view, and then your `not_flagged` reason names that sheet and quotes the note (e.g. "on XS-9031
+   as `29' DRIVE REQ'D. LT.`"). If the note is there but says something different, keep a flag and turn it into
+   a mismatch. "Normally omitted", "minor" or "probably intentional" are never reasons to drop one.
+   Where to look before keeping a flag: the profile note may exist under a typo'd ID (626 B for 262 B) or be
+   overprinted so the script could not read it (then it belongs to the overlap check, and the note-match flag
+   points to that overlap finding instead). Driveway notes are laid out differently on the XS (`STA. 235+34.00` /
+   `36' DRIVE REQ'D. LT.`) than in the profile (`STA. 235+34.00 LT.` / `36' DRIVE REQ'D.`); the script pairs them
+   by station (within 2 ft), side, width and pipe line, and treats an `XX"` size as matching any size. A
+   check with result `xs text only (no STA. line): compare by eye` means the drive line is on that XS sheet without
+   its own STA. line: compare it by eye and flag any difference.
 4. Text drawn as linework is invisible to the script: if a plan or XS sheet has no text layer for its notes
    (index flag LOW_TEXT_DENSITY_POSSIBLE_SHX_TEXT), do the comparison visually and say so.
 5. Every profile note with a pipe line gets a plan check, including station-headed notes (drives, junction boxes,
