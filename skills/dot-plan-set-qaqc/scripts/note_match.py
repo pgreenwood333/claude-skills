@@ -44,6 +44,7 @@ DRAIN_WORDS = re.compile(r"PIPE|RCP|RCAP|CULV|BOX|INLET|JUNCTION|\bJB\b|HEADWALL
 KIND_LABEL = {"driveway": "Driveway", "drainage": "Drainage", "other": "Note"}
 DRIVE_PIPE = re.compile(r"\d+(?:\.\d+)?'\s*-?\s*(?:\d+|XX)\"")   # 40'-XX" ALT. PIPE / 40' - 18" RCP
 STA_TOL = 2.0   # ft: a driveway note on the XS within this of the profile station (and same side) is the same drive
+XS_PLACE_TOL = 25.0   # ft: a note is often placed on the nearest section (495+00 note on the 494+95 section)
 
 
 def kind_of(note):
@@ -382,7 +383,8 @@ def main():
         xs_lines = {q: [norm(t) for t in open_pdf(a.pdf)[q - 1].get_text().splitlines()] for q in xs}
 
         def drive_text_on_xs(n):
-            """XS page holding this drive's line ("29' DRIVE REQ'D. LT.") next to a station label within STA_TOL."""
+            """XS page holding this drive's line ("29' DRIVE REQ'D. LT.") on a section within XS_PLACE_TOL of the drive's
+            station: notes without their own STA. line sit on the nearest section, which can be a few feet off."""
             f = drive_fields(n)
             if not f["width"]:
                 return None
@@ -392,7 +394,7 @@ def main():
                     continue
                 for t in L:
                     m = re.search(r"(\d{2,4})\+(\d{2}(?:\.\d+)?)", t)
-                    if m and abs(int(m.group(1)) * 100 + float(m.group(2)) - n["sta"]) <= STA_TOL:
+                    if m and abs(int(m.group(1)) * 100 + float(m.group(2)) - n["sta"]) <= XS_PLACE_TOL:
                         return q
             return None
         for n in prof:
@@ -557,7 +559,10 @@ def main():
     for n in prof:
         n.pop("plan_txt", None)
     summary["eye_checks"] = len(E)
-    json.dump(dict(summary=summary, findings=F, eye_checks=E, checks=checks, profile_notes=prof),
+    summary["xs_notes_read"] = len(xsn) if xs else 0
+    json.dump(dict(summary=summary, findings=F, eye_checks=E, checks=checks, profile_notes=prof,
+                   xs_notes=[dict(page=x["page"], sheet=sh_of(x["page"]), sta=x["sta"], lines=x["lines"])
+                             for x in (xsn if xs else [])]),
               open(os.path.join(a.out, "note_match.json"), "w"), indent=1)
     print(json.dumps(summary, indent=1))
 
