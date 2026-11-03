@@ -116,6 +116,18 @@ def drive_diffs(n, x):
     return out + pipe_diffs(a["pipe"], b["pipe"])
 
 
+def same_text(a_lines, b_lines):
+    """True when two notes say the same thing and differ only in layout: spacing, a trailing period, or where the
+    lines break ("OPENINGS:" alone vs "OPENINGS: 2 @ 18\""). Still a difference (the engineer wants every one), but
+    a formatting one, not a wrong value."""
+    def flat(L):
+        t = " ".join(L).upper()
+        t = re.sub(r"\s*([@,=:\-])\s*", r"\1", t)      # 2 @ 24" / 2@24", 1 @ 24" , 1 / 1 @ 24", 1
+        t = re.sub(r"\.(?=\s|$)", "", t)                # REQ'D. / REQ'D
+        return re.sub(r"\s+", "", t)
+    return flat(a_lines) == flat(b_lines)
+
+
 def fmt_sta(v):
     return f"{int(v // 100)}+{v % 100:05.2f}"
 
@@ -465,11 +477,14 @@ def main():
                         diffs.append(f"line {k + 1}: profile '{pa}' vs XS '{pb}'")
                 xsh = sheet.get(x["page"], f"p{x['page']}")
                 checks.append(dict(kind="xs", id=sid, page=n["page"], xs_page=x["page"], result="mismatch", diffs=diffs))
-                add("high", [sh, xsh], [n["page"], x["page"]],
-                    f"{KIND_LABEL[kind]} {sid}: profile note on {sh} does not match the cross-section note on {xsh}",
+                fmt_only = same_text(a_l, b_l)
+                add("low" if fmt_only else "high", [sh, xsh], [n["page"], x["page"]],
+                    f"{KIND_LABEL[kind]} {sid}: profile note on {sh} "
+                    + ("is formatted differently from" if fmt_only else "does not match")
+                    + f" the cross-section note on {xsh}",
                     "; ".join(diffs[:4]), "Make the profile and cross-section notes identical",
                     [dict(page=n["page"], rect=n["bbox"]), dict(page=x["page"], rect=x["bbox"])], n=n,
-                    disc="; ".join(diffs[:6]))
+                    disc=("Formatting only (same text): " if fmt_only else "") + "; ".join(diffs[:6]))
 
         # ---- the other direction: a cross-section note (drainage structure or driveway) with no profile note.
         # Proposed drainage and driveway notes always appear on both the profile and the cross section, so a note

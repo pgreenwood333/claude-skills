@@ -17,6 +17,8 @@ import argparse, io, json, math, os, re, sqlite3, sys, time
 import pymupdf
 
 # ---------------------------------------------------------------- sheet IDs
+XS_NO = re.compile(r"9\d{3}")
+XS_HOW = "from sheet no (9000-series cross section)"
 ID_LABELS = [("SHEET", "ID"), ("WK.", "NO."), ("WK", "NO.")]
 NO_LABELS = [("SHEET", "NO."), ("SHEET", "NO")]
 ID_PATTERN = re.compile(r"^([A-Z]{1,6})-?([0-9]{0,4}[A-Z]{0,3})$|^E\d+ OF \d+$|^[A-Z]\d{3}[A-Z]?$")
@@ -24,7 +26,7 @@ TYPE_BY_PREFIX = {
     "SQ": "SQS", "SQS": "SQS", "EQ": "EQ", "DI": "INDEX", "RVP": "REVISIONS",
     "WK": "WORKING", "PMD": "WORKING", "TC": "WORKING", "ECP": "WORKING", "ID": "WORKING",
     "PSP": "WORKING", "DCS": "WORKING", "PCMS": "WORKING", "TS": "TYPICAL", "GN": "NOTES",
-    "VS": "VEGETATION", "CP": "SPECIAL", "ESMTC": "SPECIAL", "TSS": "SPECIAL",
+    "VS": "VEGETATION", "CP": "SPECIAL", "ESMTC": "SPECIAL", "TSS": "SPECIAL", "XS": "CROSS SECTION",
 }
 BOILERPLATE = re.compile(r"PROJECT NO|COUNTY|FMS CON|DESIGNED BY|DETAILED BY|CHECKED BY|DATE|DIR OF STRUCT|"
                          r"DEP\. DIR|STATE BRIDGE|PRELIMINARY|NOT FOR|CONSTRUCTION$|MISSISSIPPI|DEPARTMENT|"
@@ -164,6 +166,9 @@ def title_block(page, words):
         title_ocr = title_from_ocr(page, title_clip)
     if not sid and page.number == 0:
         sid, how = "TITLE", "assumed_title_sheet"
+    if sno and XS_NO.fullmatch(str(sno)) and (not sid or how == "regex"):
+        # a pattern-matched ID on a cross section is usually a structure type from a note (SS-2, FE-1, JB-2)
+        sid, how = f"XS-{sno}", XS_HOW   # cross sections carry only a 9000-series sheet number, no Sheet ID box
     sid = sid or "UNKNOWN"
     prefix = re.split(r"[-\s\d]", sid)[0] if sid != "UNKNOWN" else "UNKNOWN"
     if sid == "TITLE":
@@ -546,6 +551,49 @@ def fts_query(q):
     return " OR ".join('"' + t.replace('"', "") + '"' for t in terms)
 
 
+def cmd_relabel(out):
+    """Apply the cross-section rule (no Sheet ID + 9000-series sheet no -> XS-9001) to an index built before it
+    existed: index.json, the chunks table and the chunk files. Prints what changed; changes nothing else."""
+    p = os.path.join(out, "index.json")
+    d = json.load(open(p))
+    changed = {}
+    for pg in d["pages"]:
+        if pg.get("sheet_no") and XS_NO.fullmatch(str(pg["sheet_no"])) and \
+                (pg["sheet_id"] == "UNKNOWN" or pg.get("id_source") == "regex"):
+            old = pg["sheet_id"]
+            new = f"XS-{pg['sheet_no']}"
+            changed[pg["pdf_page"]] = new
+            pg.update(sheet_id=new, prefix="XS", type="CROSS SECTION", id_source=XS_HOW,
+                      flags=[f for f in pg["flags"] if f != "SHEET_ID_UNKNOWN"])
+            ch = os.path.join(out, pg.get("chunk") or "")
+            if pg.get("chunk") and os.path.exists(ch):
+                new_ch = os.path.join(os.path.dirname(ch), f"p{pg['pdf_page']:04d}_{new}.md")
+                txt = open(ch).read().replace(f"Sheet ID {old}", f"Sheet ID {new}", 1)
+                txt = re.sub(r"\| Type [A-Z/ ]+\n", "| Type CROSS SECTION\n", txt, count=1)
+                open(new_ch, "w").write(txt)
+                if new_ch != ch:
+                    os.remove(ch)
+                    pg["chunk"] = os.path.relpath(new_ch, out)
+    for pg in d["pages"]:   # type line of every cross-section chunk, including ones relabeled earlier
+        ch = os.path.join(out, pg.get("chunk") or "")
+        if pg.get("prefix") == "XS" and pg.get("chunk") and os.path.exists(ch):
+            pg["type"] = "CROSS SECTION"
+            t = open(ch).read()
+            t2 = re.sub(r"\| Type [A-Z/ ]+\n", "| Type CROSS SECTION\n", t, count=1)
+            if t2 != t:
+                open(ch, "w").write(t2)
+    db = sqlite3.connect(os.path.join(out, "index.db"))
+    for pno, new in changed.items():
+        db.execute("UPDATE chunks SET sheet_id=? WHERE page=?", (new, pno))
+    db.commit()
+    db.close()
+    s = d["summary"]
+    s["unknown_ids"] = [pg["pdf_page"] for pg in d["pages"] if pg["sheet_id"] == "UNKNOWN"]
+    s["flagged_pages"] = {pg["pdf_page"]: pg["flags"] for pg in d["pages"] if pg["flags"]}
+    json.dump(d, open(p, "w"), indent=1)
+    print(json.dumps(dict(relabeled=len(changed), still_unknown=s["unknown_ids"]), indent=1))
+
+
 def cmd_search(out, q, k=15, sheet=None, kind=None):
     import numpy as np
     db = sqlite3.connect(os.path.join(out, "index.db"))
@@ -645,6 +693,7 @@ if __name__ == "__main__":
     a = sp.add_parser("search"); a.add_argument("out"); a.add_argument("query"); a.add_argument("--k", type=int, default=15)
     a.add_argument("--sheet"); a.add_argument("--kind")
     a = sp.add_parser("sheets"); a.add_argument("out")
+    a = sp.add_parser("relabel"); a.add_argument("out")
     a = sp.add_parser("render"); a.add_argument("pdf"); a.add_argument("out"); a.add_argument("page")
     a.add_argument("--dpi", type=int, default=200); a.add_argument("--clip"); a.add_argument("--tiles")
     a = sp.add_parser("words"); a.add_argument("out"); a.add_argument("page"); a.add_argument("--clip")
@@ -661,6 +710,8 @@ if __name__ == "__main__":
         cmd_search(x.out, x.query, x.k, x.sheet, x.kind)
     elif x.cmd == "sheets":
         cmd_sheets(x.out)
+    elif x.cmd == "relabel":
+        cmd_relabel(x.out)
     elif x.cmd == "render":
         cmd_render(x.pdf, x.out, x.page, x.dpi, x.clip, x.tiles)
     elif x.cmd == "words":
