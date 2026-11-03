@@ -12,7 +12,7 @@ Pages: with --index, WK pages are prefix WK and XS pages are sheets numbered 900
 --wk-pages / --xs-pages override. Writes <out>/note_match.json: findings (findings-schema format, task
 "notematch") plus every comparison made, so the agent and orchestrator can verify each one.
 """
-import argparse, json, os, re
+import argparse, json, os, re, sys
 import functools
 import pymupdf
 
@@ -226,6 +226,13 @@ def main():
             if not a.xs_pages and (re.fullmatch(r"9\d{3}", no) or p["prefix"].upper() in ("XS", "X")):
                 xs.append(p["pdf_page"])
     F, checks = [], []
+    # never compare against nothing: no WK or no XS pages means a missing file or a mistyped index, not "no problems"
+    for name, pg, how in (("WK plan/profile", wk, "--wk-pages"), ("cross-section (9000-series / XS)", xs, "--xs-pages")):
+        if not pg:
+            print(f"\nSTOP: note match found no {name} sheets in {a.pdf}.\nFIX:  give the PDF that contains them (plans "
+                  f"and cross sections combined), or pass {how} with their page numbers. Ask the engineer if unsure.",
+                  file=sys.stderr)
+            sys.exit(2)
 
     def add(sev, sids, pages, finding, evidence, fix, locate, n=None, disc=None):
         """n: the note the flag is about (its plan/profile/XS text goes in the workbook row); disc: short discrepancy."""

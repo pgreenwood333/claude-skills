@@ -95,9 +95,14 @@ def main():
     ap.add_argument("--finalize", action="store_true")
     a = ap.parse_args()
     report, failed = {}, False
+    explicit = "--tasks" in sys.argv
     for task in [t for t in a.tasks.split(",") if t in SOURCES]:
         src = os.path.join(a.work, SOURCES[task])
         if not os.path.exists(src):
+            if explicit:   # a check that ran must have its script output; a missing file is a failure, not "clean"
+                print(f"\nSTOP: {task} ran but its script output {src} is missing.\nFIX:  re-run that check's script "
+                      "(see its brief), then re-run this gate.", file=sys.stderr)
+                sys.exit(2)
             continue
         cands = candidates(task, load_json(src, {}))
         kept_file = load_json(os.path.join(a.work, "findings", f"{task}.json"), {}) or {}

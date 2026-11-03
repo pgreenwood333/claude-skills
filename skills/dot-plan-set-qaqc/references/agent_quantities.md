@@ -7,7 +7,7 @@ the sheets. You transcribe; `reconcile.py` does every sum and comparison. Never 
 
 1. Identify sheets with `build_index.py sheets <index>`: SQS sheets (prefix SQ or SQS) are the bid sheets; EQ-# are
    estimated quantities by item type; recaps are quantity tables on working sheets (WK, PMD, TC, ECP, ID, PSP, ...).
-   If a sheet's type cannot be identified, note it and continue.
+   If a sheet's type cannot be identified, list it in your reply (it goes into the report) and continue.
 2. Transcribe the SQS rows into `<work>/qty/sqs.json`, the EQ rows into `eq.json` and recap rows into `recap.json`
    (formats at the top of `$S/reconcile.py`). Include `pdf_page` on every row. Sources:
    - The sheet chunk (`chunks/p000N_<ID>.md`): OCR rows of pasted tables (`pay item | description | unit | qty`) and
@@ -21,7 +21,7 @@ the sheets. You transcribe; `reconcile.py` does every sum and comparison. Never 
 4. Put every rule-based decision in `overrides.json` keyed by pay item, by "ADD OPTION 1|<pay item>" for one
    schedule only, or by "<schedule>|D:<description>" for rows without a pay item: special statuses, the
    note, the paired quantity for OR items, and the most likely `cause` for each mismatch.
-5. Run `python3 $S/reconcile.py <work>/qty`. Fix every entry under `problems` (unreadable quantities). Then re-check
+5. Run `$PY $S/reconcile.py <work>/qty`. Fix every entry under `problems` (unreadable quantities). Then re-check
    each MISMATCH by zooming into both sheets again; correct any misread and re-run. A MISMATCH should only survive
    if you have looked at both numbers on the image.
 6. Reply with Table 1 and Table 2 status counts, and every MISMATCH in one line each.

@@ -117,7 +117,8 @@ def title_from_ocr(page, clip):
         pix = pg.get_pixmap(dpi=200)
     try:
         res = ocr(pix.tobytes("png"))
-    except Exception:
+    except Exception as e:
+        FAILURES.append(f"p{page.number + 1}: title block OCR failed: {type(e).__name__}: {str(e)[:120]}")
         return ""
     if not res:
         return ""
@@ -179,6 +180,16 @@ def title_block(page, words):
 
 # ---------------------------------------------------------------- OCR
 _OCR = None
+FAILURES = []   # every error during indexing; the index finishes, then stops loudly if this is not empty
+ENV_FIX = ('set up the QA/QC environment and run the scripts with it: eval "$(bash <skill>/scripts/setup_env.sh)" '
+           'then use $PY instead of python3')
+
+
+def stop(what, fix):
+    """Stop the run and tell the engineer what failed and how to fix it. Never continue degraded."""
+    print(f"\nSTOP: {what}\nFIX:  {fix}\nDo not continue the QA/QC until this is fixed or the engineer says to.",
+          file=sys.stderr)
+    sys.exit(2)
 
 
 def _probe_png():
@@ -190,7 +201,7 @@ def _probe_png():
 
 
 def ocr_engine():
-    """RapidOCR (pip-only) first, Tesseract second, else None (agents fall back to visual reads)."""
+    """RapidOCR, or stop. A missing or half-installed OCR engine must never fall back silently."""
     global _OCR
     if _OCR is not None:
         return _OCR
@@ -205,42 +216,12 @@ def ocr_engine():
                 for box, txt, sc in zip(res.boxes, res.txts, res.scores):
                     out.append((box, txt, float(sc)))
             return out
-        run(_probe_png())
+        if not run(_probe_png()):
+            raise RuntimeError("OCR loaded but read nothing from a test image")
         _OCR = ("rapidocr", run)
         return _OCR
-    except Exception:
-        pass
-    try:
-        from rapidocr_onnxruntime import RapidOCR
-        eng = RapidOCR()
-
-        def run(png_bytes):
-            res, _ = eng(png_bytes)
-            return [(b, t, float(s)) for b, t, s in (res or [])]
-        run(_probe_png())
-        _OCR = ("rapidocr_onnxruntime", run)
-        return _OCR
-    except Exception:
-        pass
-    try:
-        import pytesseract
-        from PIL import Image
-        pytesseract.get_tesseract_version()
-
-        def run(png_bytes):
-            d = pytesseract.image_to_data(Image.open(io.BytesIO(png_bytes)), config="--psm 11",
-                                          output_type=pytesseract.Output.DICT)
-            out = []
-            for i, t in enumerate(d["text"]):
-                if t.strip() and float(d["conf"][i]) > 0:
-                    x, y, w, h = d["left"][i], d["top"][i], d["width"][i], d["height"][i]
-                    out.append(([[x, y], [x + w, y], [x + w, y + h], [x, y + h]], t, float(d["conf"][i]) / 100))
-            return out
-        _OCR = ("tesseract", run)
-        return _OCR
-    except Exception:
-        _OCR = ("none", None)
-        return _OCR
+    except Exception as e:
+        stop(f"OCR (rapidocr) did not load in {sys.executable}: {type(e).__name__}: {str(e)[:200]}", ENV_FIX)
 
 
 def pix_png(pix, min_width=1600):
@@ -365,6 +346,7 @@ def build_vectors(chunks, out):
         meta["dense_model"] = "BAAI/bge-small-en-v1.5"
     except Exception as e:
         meta["dense_error"] = f"{type(e).__name__}: {e}"[:200]
+        FAILURES.append(f"vector search model failed: {meta['dense_error']}")
     return meta
 
 
@@ -449,6 +431,7 @@ def cmd_index(pdf, out, ocr_all=False, only=None, dense=True):
                     ow = ocr_to_page(ocr(png), to_page, scale)
                 except Exception as e:
                     ow, region["error"] = [], str(e)[:200]
+                    FAILURES.append(f"p{pno} {sid}: OCR of image region {tag} failed: {str(e)[:120]}")
                 low = sum(1 for o in ow if o[5] < 0.80)
                 region.update(words=len(ow), low_conf=low)
                 rec["ocr_words"] += len(ow)
@@ -503,6 +486,7 @@ def cmd_index(pdf, out, ocr_all=False, only=None, dense=True):
                     add_chunk(pno, sid, "table", t.bbox, md)
             except Exception as e:
                 rec["flags"].append(f"TABLE_ERROR:{str(e)[:60]}")
+                FAILURES.append(f"p{pno} {sid}: vector table read failed: {str(e)[:120]}")
 
         # ---- quality flags
         if 0 <= n_draw and n_draw > 3000 and len(words) < 60 and not big_imgs:
@@ -545,8 +529,15 @@ def cmd_index(pdf, out, ocr_all=False, only=None, dense=True):
     vec_meta = build_vectors(chunks, out) if dense else {"dense_model": None}
     summary.update(vec_meta)
     summary["seconds"] = round(time.time() - t0, 1)
+    summary["failures"] = len(FAILURES)
     write()
     print(json.dumps(summary, indent=1))
+    if FAILURES:
+        with open(os.path.join(out, "FAILURES.json"), "w") as f:
+            json.dump(FAILURES, f, indent=1)
+        stop(f"{len(FAILURES)} error(s) while indexing (index/FAILURES.json):\n  " + "\n  ".join(FAILURES[:15]),
+             "OCR/table errors on single pages: re-run those pages or read them visually ONLY with the engineer's OK. "
+             "Engine or model errors: " + ENV_FIX)
 
 
 # ---------------------------------------------------------------- search
@@ -596,8 +587,8 @@ def cmd_search(out, q, k=15, sheet=None, kind=None):
             sims = dense @ qe
             order = [int(i) + 1 for i in np.argsort(-sims)[:200]]
             ranks.append([i for i in order if i in keep_ids])
-        except Exception:
-            pass
+        except Exception as e:
+            stop(f"vector search failed: {type(e).__name__}: {str(e)[:200]}", ENV_FIX)
     fused = {}
     for rk in ranks:  # reciprocal rank fusion
         for pos, cid in enumerate(rk):

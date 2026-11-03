@@ -7,7 +7,7 @@ The engineer's rules:
   "156' - 18\" RCP REQ'D") must correspond with the profile note: same structure ID, pipe length, size and material.
 
 1. Run the check:
-   `python3 $S/note_match.py <pdf> <work>/notematch --index <index>`
+   `$PY $S/note_match.py <pdf> <work>/notematch --index <index>`
    (WK pages = prefix WK; XS pages = sheets numbered 9000-9999 or prefixed XS. Override with `--wk-pages` /
    `--xs-pages` if the index typed them differently; check the counts it prints.)
    The profile notes come from the same extraction as the profile-notes-extractor skill, which reproduced an

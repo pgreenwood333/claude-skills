@@ -6,7 +6,7 @@ Close-but-clear labels are NOT overlaps and must not be reported. Plan views are
 asks for them (utilities overlap there all the time).
 
 1. Ink test (exact):
-   `python3 $S/find_overlaps.py <pdf> <index> <work>/overlap` (add `--region all` if asked for profile + plan).
+   `$PY $S/find_overlaps.py <pdf> <index> <work>/overlap` (add `--region all` if asked for profile + plan).
    On OpenRoads sheets the visible letters are drawn shapes with an invisible text copy on top; the script assigns
    each letter shape to its label, redraws pairs of nearby labels separately at 600 dpi and reports a pair only when
    pixels carry ink from both. `pairs_tested` lists every close pair and its shared ink (0 = clear).

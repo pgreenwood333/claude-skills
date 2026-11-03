@@ -2,7 +2,7 @@
 
 Goal: real spelling errors on any sheet, including sheet titles, notes, table titles, legends and pasted tables.
 
-1. `python3 $S/spell_candidates.py <index> <work>/spell_candidates.json`
+1. `$PY $S/spell_candidates.py <index> <work>/spell_candidates.json`
    (add `--allow <file>` with project words if the user gave any).
 2. Judge each candidate in `unknown`, `repeated` and `variants`. Report only real errors:
    - misspellings (PERMAMENT, GUTTTER, RECIEVE), repeated words, typos in titles and notes;

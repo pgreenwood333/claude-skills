@@ -5,15 +5,15 @@ description that matches the sheet's title block; every sheet in the PDF is list
 
 Paths you are given: PDF, `index/` (from build_index.py), work dir, scripts `$S`.
 
-1. Find the DI sheet(s): `python3 $S/build_index.py sheets <index>` and look for type INDEX.
+1. Find the DI sheet(s): `$PY $S/build_index.py sheets <index>` and look for type INDEX.
 2. Transcribe the index. It is usually a pasted image and often low resolution, so read it visually:
-   `python3 $S/build_index.py render <pdf> <index> <page> --dpi 250 --tiles 3x2` and read every row of every tile.
+   `$PY $S/build_index.py render <pdf> <index> <page> --dpi 250 --tiles 3x2` and read every row of every tile.
    Use the OCR text in the DI chunk (`chunks/p000N_DI-1.md`) as a second reader: where the two disagree (a digit,
    a letter, a Sheet ID), zoom further (`--clip` around that row, `--dpi 350`) and decide from the image.
    Write `<work>/index_check/di_entries.json` in the format at the top of `$S/check_index.py`:
    group headings with their counts in parentheses, every entry with description, Sheet ID, sheet no, and the
    index total sheets. Keep Sheet IDs exactly as printed (spaces after the dash are fine; they are normalised).
-3. Run `python3 $S/check_index.py <index> <work>/index_check/di_entries.json <work>/findings/index.json`.
+3. Run `$PY $S/check_index.py <index> <work>/index_check/di_entries.json <work>/findings/index.json`.
    What the script checks for every listed sheet: the Sheet ID exists, the sheet number equals the title block's
    sheet number exactly, and the description matches the title-block title WORD FOR WORD (it reads the title twice:
    from the text layer and by OCR; a word counts as missing only if neither reader has it). Line order, dashes used

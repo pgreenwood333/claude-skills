@@ -38,6 +38,11 @@ Write `{"findings": [ ... ]}` to the path in your brief. One object per flag:
 - `unsure`: one line, when you cannot settle a flag yourself (unreadable, judgment call). Keep the flag and say
   what the engineer should look at; it reaches the workbook as an Unsure row if no reviewer settles it.
 
+## Errors: stop and report
+
+If a script fails, prints `STOP:`, or gives an impossible result (no pages, no candidates where there must be some),
+stop and report it in your reply with the error text. Do not work around it or continue with part of the check.
+
 ## No skipping (checked by code)
 
 Every candidate your script produced must end in one of two places, and `check_coverage.py` checks it:

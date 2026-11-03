@@ -10,7 +10,16 @@ You are the orchestrator. Input: one plan-set PDF. Outputs, next to the PDF unle
 Everything reported is a flag for the engineer, not a finding of fact. Sheet IDs are the keys; give PDF pages too.
 Never skip an item silently: if something cannot be read, say so in the findings and keep going.
 
-Scripts live in this skill's `scripts/` folder (call it `$S`). Agent briefs are in `references/`.
+**Stop and alert, never fail silently (the engineer's hard rule).** If any step errors, exits non-zero, prints
+`STOP:`, or gives a result that cannot be right (0 pages of a type, 0 notes, an empty output, a package or model that
+will not load), stop the run at once and tell the engineer in plain words: what failed, what it means for the
+results, and the fix (the script's `FIX:` line, or your own). Then wait for their go-ahead. Never carry on with a
+weaker run (no OCR, no vector search, skipped sheets, a check that did not run) and never work around a failure on
+your own. Log it as a `problem` event in the audit log. The same goes for every agent: an agent that hits an error
+reports it and stops; it does not guess.
+
+Scripts live in this skill's `scripts/` folder (call it `$S`). Agent briefs are in `references/`. Run every script
+with `$PY` (set in Step 1), never plain `python3`.
 
 ## Step 0: Ask which checks to run (always first)
 
@@ -36,7 +45,7 @@ Also read the last entry of `qaqc_memory/audit_log.md` if it exists: its "How it
 should do better.
 
 Audit log (every run, as you go): log one line per event with
-`python3 $S/audit_log.py event qaqc_work <kind> "<text>"`, kinds `ran` (every skill, script and agent you run, with
+`$PY $S/audit_log.py event qaqc_work <kind> "<text>"`, kinds `ran` (every skill, script and agent you run, with
 model and effort), `looked` (anything you inspected that the numbers will not show, e.g. renders), `problem`
 (anything that failed, could not be read, or that an agent got wrong), `decision` (calls you made and why) and
 `improve` (what should change next time, including brief or script fixes). Step 7 turns them into the run's entry.
@@ -44,16 +53,19 @@ model and effort), `looked` (anything you inspected that the numbers will not sh
 ## Step 1: Set up
 
 ```bash
-pip install "pymupdf==1.28.2" pdfplumber openpyxl pyspellchecker numpy rapidocr onnxruntime fastembed --break-system-packages -q
+eval "$(bash $S/setup_env.sh)"   # sets $PY and FASTEMBED_CACHE; creates the environment the first time
 ```
-If `fastembed` or `rapidocr`/`onnxruntime` will not install, carry on: the index falls back to keyword + fuzzy
-search, and pages without OCR must be read visually (the index flags them). Work folder: `qaqc_work/` beside the PDF.
+OCR (rapidocr) and vector search (fastembed) need onnxruntime, which has no build for Python 3.13+, so the scripts
+run in their own Python 3.12 environment with pinned versions. `setup_env.sh` creates it once (with `uv`) and checks
+it every run. If it prints `ERROR`, stop and tell the engineer (see "Stop and alert"); do not run without OCR.
+Pass `$PY` and `FASTEMBED_CACHE` to every agent. Work folder: `qaqc_work/` beside the PDF.
+Plans and cross sections in two PDFs: combine them into one first (plans, then XS) and name it in the report.
 
 ## Step 2: Index, chunk, embed (once)
 
 ```bash
-python3 $S/build_index.py index "<plans.pdf>" qaqc_work/index
-python3 $S/build_index.py sheets qaqc_work/index
+$PY $S/build_index.py index "<plans.pdf>" qaqc_work/index
+$PY $S/build_index.py sheets qaqc_work/index
 ```
 What it builds: every word with its page coordinates (text layer, plus OCR for tables pasted into the sheets as
 images, which is how this set's Detailed Index, SQ and EQ tables are drawn), one markdown chunk per sheet named by
@@ -99,19 +111,19 @@ unsure, it keeps the flag with `unsure`. It never drops one.
 You are the final checker, but you do not grade your own team's work alone. Four layers, in this order:
 
 0. **Coverage gate (code: nothing skipped).**
-   `python3 $S/check_coverage.py qaqc_work --tasks <chosen,tasks>`
+   `$PY $S/check_coverage.py qaqc_work --tasks <chosen,tasks>`
    Every script candidate must be kept or cleared with reason + sheet + text seen. If it exits 1, send each check's
    `unresolved` and `bad_clears` back to its agent once, then re-run it. Then run it with `--finalize`: whatever is
    still unresolved is written to `findings/<task>_unresolved.json` as Unsure flags (never dropped). Report how many.
 
 1. **Evidence gate (code, cannot be argued with).**
-   `python3 $S/validate_findings.py "<plans.pdf>" qaqc_work/index qaqc_work`
+   `$PY $S/validate_findings.py "<plans.pdf>" qaqc_work/index qaqc_work`
    Every flag must name the right sheet, land on its page, and quote text that is really printed there. Failures
    are written into each finding as `gate.problems`. (Flags in `_unresolved` files are already Unsure and already
    went back once; their gate result does not trigger another send-back.) If one check fails the gate on more than 2 flags, send that
    agent its list once ("fix the quote to the exact printed text, or drop the flag") and re-run the gate.
 2. **Independent grader (fresh subagent).** Merge first:
-   `python3 $S/merge_findings.py qaqc_work --tasks <chosen,tasks>`   # index,spelling,overlap,notematch,color,quantity
+   `$PY $S/merge_findings.py qaqc_work --tasks <chosen,tasks>`   # index,spelling,overlap,notematch,color,quantity
    (it reads `findings/*.json`, so the `_unresolved` files come along; `_cleared` files hold no findings.)
    Then spawn one general-purpose subagent on **opus, high effort** with `references/grader.md`, the PDF, `qaqc_work/index`,
    `qaqc_work/findings_reviewed.json`, `$S`, the checks that ran and the lessons. Do not give it the agents' replies
@@ -138,8 +150,8 @@ copy that you read on a render).
 ## Step 5: Mark up the PDF and build the workbook
 
 ```bash
-python3 $S/markup_pdf.py "<plans.pdf>" qaqc_work/index qaqc_work/findings_reviewed.json "<name>_QAQC_markup.pdf"
-python3 $S/build_simple_report.py qaqc_work/findings_reviewed.json qaqc_work/index "<name>_QAQC.xlsx"
+$PY $S/markup_pdf.py "<plans.pdf>" qaqc_work/index qaqc_work/findings_reviewed.json "<name>_QAQC_markup.pdf"
+$PY $S/build_simple_report.py qaqc_work/findings_reviewed.json qaqc_work/index "<name>_QAQC.xlsx"
 ```
 The workbook is a plain punch list: one tab per check, one row per sheet (Spelling: Text Found / Correct To;
 others: What's Wrong / Fix / Priority), XX placeholders on their own tab, plus Your Call and Rejected tabs.
@@ -164,8 +176,8 @@ how many revision rounds ran. Link both output files.
 ## Step 7: Remember (every run)
 
 ```bash
-python3 $S/learn.py record qaqc_work <qaqc_memory> --plan-set "<pdf name>"
-python3 $S/audit_log.py append qaqc_work <qaqc_memory> --run <run_id from record> --plan-set "<pdf name>" --checks <chosen,tasks>
+$PY $S/learn.py record qaqc_work <qaqc_memory> --plan-set "<pdf name>"
+$PY $S/audit_log.py append qaqc_work <qaqc_memory> --run <run_id from record> --plan-set "<pdf name>" --checks <chosen,tasks>
 ```
 The second line appends this run's entry to `qaqc_memory/audit_log.md` (what was looked at, what ran, results, what
 went wrong, decisions, how it will improve). It only ever appends. Link the file in the report.

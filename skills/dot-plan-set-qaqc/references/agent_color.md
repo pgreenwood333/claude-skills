@@ -18,7 +18,7 @@ Read `qaqc_memory/lessons.md` (section "color") before starting if the orchestra
 engineer's past corrections and they override the defaults above.
 
 1. Measure (exact):
-   `python3 $S/color_check.py <pdf> <index> <work>/color`
+   `$PY $S/color_check.py <pdf> <index> <work>/color`
    Every letter's printed color is read from the PDF itself, so the color is a fact, not a guess. The script groups
    stacked lines into notes and lists candidates by rule (see the header of the script). Candidates are leads, not
    findings: decide each one.
