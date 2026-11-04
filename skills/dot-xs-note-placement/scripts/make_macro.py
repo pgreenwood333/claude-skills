@@ -905,7 +905,6 @@ write_crlf(WORK / "xsnotes_batch_REMOVE.txt", f"vba run [{PROJ}]PlaceXSNotes.Rem
 from collections import Counter
 per_file = Counter(n.get("dgn_file", "?") for n in notes)
 cuts = sorted({(n["dgn_file"], n["new_section_sta"]) for n in notes if n["status"] == "CUT"}, key=lambda c: sta_ft(c[1]))
-ref_file = max(per_file, key=lambda f: per_file[f])
 guide = (HERE.parent / "templates" / "HOW_TO_RUN.md").read_text()
 ns = settings.get("new_sections", {})
 fill = {
@@ -914,7 +913,6 @@ fill = {
     "CUT_LIST": "\n".join(f"- {s}  ({f})" for f, s in cuts) or "- none",
     "CUT_SETTINGS": "\n".join(f"- {k.replace('_', ' ')}: {v}" for k, v in ns.items() if k != "stations") or "- (same settings as the existing sections)",
     "LEVEL": nt["level"], "STYLE": nt["text_style"], "WEIGHT": str(nt["weight"]), "COLOR": str(COLOR),
-    "FIRST_FILE": settings.get("first_file") or ref_file,
 }
 for k, v in fill.items():
     guide = guide.replace("{{" + k + "}}", v)

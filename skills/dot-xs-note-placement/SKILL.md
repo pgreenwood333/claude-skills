@@ -66,34 +66,27 @@ It reads the drawing-model names (`<group> - <station>`, read-only) and gives ea
 For every NEEDS DECISION note, ask the engineer: **place on the nearest section**, **cut a new section**, or **skip**. Show the station, structure, nearest section and gap, ideally in one table, then ask. Record the answers in `<work>/decisions.json` (`{"NM-151": "nearest", "NM-181": "cut"}`) and re-run with `--decisions <work>/decisions.json`.
 **Any group question** (`ASK:` several model groups) gets asked too.
 
-## Step 4: Settings: level, text, placement, size
+## Step 4: Settings: level, color, style, placement
 
-Ask for the screenshots and answers below, and confirm anything you read from them:
-- **Change Attributes on an existing XS note:** level, color, weight, class. DOT default: XS_P_DRAINAGE, **color 15** (the number, not ByLevel), weight 2.
-- **The Text Editor on an existing note:** text style and font. Also check the note's line format against the profile text.
+Ask for the screenshots and answers below, and confirm anything you read from them. The DOT standard (proven on job 123456, every note checked by the engineer) is the default; confirm it still applies rather than re-deriving it:
+- **Change Attributes on an existing XS note:** level, color, weight. Standard: **XS_P_DRAINAGE, color 15** (the number, not ByLevel), weight 2.
+- **The Text Editor on an existing note:** text style. Standard: **_Gen_Notes at its own size (0.01)**, Engineering Vert. Also check the note's line format against the profile text.
 - **Place Named Boundary, Civil Cross Section, as used for the existing sections:** drawing seed, detail scale, group, left/right offsets, top/bottom clearance, vertical exaggeration. These go in the run guide for the sections the engineer cuts.
-- **Placement (engineer's standard, 2026-11-04):** tucked into the grid corner. LT note: left edge `edge_gap` (1 ft) in from the grid's left edge; RT note: right edge 1 ft in from the right edge; top 1 ft under the top grid line. Left-justified, no leaders. Two notes in one corner go side by side, toward the centerline. Confirm it still applies.
-- **Which XS file already has a note** on that level and style. That file runs first (`first_file`), because the others size their text from it.
+- **Placement.** Standard: tucked into the grid corner. LT note: left edge 1 ft in from the grid's left edge; RT note: right edge 1 ft in from the right edge; top 1 ft under the top grid line. Left-justified, no leaders. Two notes in one corner go side by side, toward the centerline.
 - **Their own VBA project name.** Never a shared office project like `status`.
 
-**Text size.**
-- **Every note is the text style itself** (engineer, 2026-11-04): `_Gen_Notes` at the style's own size (0.01 in the Text Editor), never a copy of a nearby note, because a nearby note can carry another style or a size override (3.1's "439 B" did: Style (none), 0.0106).
-- **How:** the macro makes each section model active while it builds that model's note, so the drawing's own annotation scale applies and nothing is rescaled. Building in the default model and scaling (the old way) gives the right look but a size override.
-- **Safety check, built in** (`STANDARD_SIZE` in `make_macro.py`): before each note, the 8-line note "354 A" built from the style in that model must measure 15.001 ft (1"=10'), within 3%. If not, it stops (dry run included) and says why.
-- **Only set `text_size.drawing_scale_ft_per_in`** (1"=10' → 10). At another scale the standard scales linearly; then have the engineer check the first placed note against an existing one before batching.
-- **Different text style or a non-DOT standard:** ask. Then either give `text_size.standard` (`{"height", "scale_ft_per_in", "lines"}` measured from a hand-placed note) or set `"use_standard": false` and choose:
-  1. **Place one note by hand (recommended).** With Place Text, active level and style set as the standard, they place one note in any section model. MicroStation applies the annotation scale correctly. The macro then copies that note everywhere, and saves it as the size reference for the other files. Measure it as described above.
-  2. **Fully from scratch.** Ask for the plotted text height for notes (inches on the sheet) and the drawing scale (e.g. 1"=10'). Set `scratch_height` = plotted height × feet per inch: 0.10" at 1"=10' gives 1.0. Never assume the standard height; ask.
-     - **How the macro sizes it:** it builds a capital-letter line from the style, measures it, and scales the note so that line is `scratch_height` tall in the drawing model.
-     - **Check it before batching:** after placing on the first file, have the engineer use Element Information on one note and compare the text height with the plotted height × scale. This path is less proven than copying a note. Say so.
-- **Level.** If the level isn't in a file yet, the macro brings it in from the level library (key-in `ACTIVE LEVEL`) and then puts the old active level back. The text style is handled the same way (`TEXTSTYLE ACTIVE`).
+**Text size: nothing to set, even when no file has a note yet.**
+- Every note is built from the text style itself. The macro makes each section model active while it builds that model's note, so the drawing's annotation scale applies and nothing is rescaled: the Text Editor shows the style and its own size, no override. It never copies a nearby note (one can carry another style or a size override).
+- **Size check, built in** (`STANDARD_SIZE` in `make_macro.py`): before each note, the 8-line note "354 A" built from `_Gen_Notes` in that section must measure 15.001 ft at 1"=10' (within 3%). Every report shows a `Size check:` line; it should read x1.000. If not, the macro stops, dry run included.
+- Set `text_size.drawing_scale_ft_per_in` (1"=10' → 10; the check scales with it).
+- **Different text style:** the notes still come out at that style's own size. The built-in check is for `_Gen_Notes`, so either set `"use_standard": false` (no check; have the engineer check the first note's Text Editor before batching) or measure one hand-placed note and give `text_size.standard` (`{"height", "scale_ft_per_in", "lines"}`). Ask which.
+- **Level and style missing from a file:** the macro brings them in from the DOT libraries (key-ins `ACTIVE LEVEL` / `TEXTSTYLE ACTIVE`) and restores the old active ones afterwards.
 
 Write `<work>/macro_settings.json`:
 
 ```json
 {
   "job": "123456", "vba_project": "XSNotes", "group_prefix": "MLUS51 - ",
-  "first_file": "XS-US51-2.1-35850 to 39200.dgn",
   "note_text": {"level": "XS_P_DRAINAGE", "text_style": "_Gen_Notes", "weight": 2, "color": 15, "class": "Primary"},
   "grid": {"left_offset": -140, "right_offset": 140},
   "placement": {"edge_gap": 1, "top_gap": 1, "side_gap": 3},
@@ -108,38 +101,51 @@ Write `<work>/macro_settings.json`:
 
 ```bash
 python3 $X/make_macro.py <work>
+python3 $X/make_checklist.py <work>
 ```
 
-It refuses (`STOP:`) while any note needs a decision, has no side, or a setting is missing. Fix and re-run.
-It writes `PlaceXSNotes.bas`, `xsnotes_batch_DRYRUN.txt`, `xsnotes_batch_PLACE.txt` and `HOW_TO_RUN.md` into `<work>`.
-Send the `.bas`, the two command files and `HOW_TO_RUN.md` with SendUserFile.
+`make_macro.py` refuses (`STOP:`) while any note needs a decision, has no side, or a setting is wrong. Fix and re-run.
+It writes `PlaceXSNotes.bas`, `xsnotes_batch_DRYRUN.txt`, `xsnotes_batch_PLACE.txt`, `xsnotes_batch_REMOVE.txt` and `HOW_TO_RUN.md`; `make_checklist.py` writes `<job>_XS_notes_checklist.xlsx` (every note, its section model, corner, full text, an OK/Fix column).
+Send all of them with SendUserFile.
 
 In chat, lead with:
 - the note count per XS file
 - the list of new sections to cut, with stations and settings
-- the run order: compile, dry run on `first_file`, read the report, place on `first_file` and check it, then the rest by hand or Batch Process
+- the run order (below)
+
+**Run order for the engineer:**
+1. Cut the new sections (drawing model only).
+2. VBA Manager: load/create their own project, import the `.bas`, Debug > Compile, Save.
+3. Back up the XS files.
+4. Batch Process, every XS file, **Initial Model = Default Model Only**, command file `xsnotes_batch_DRYRUN.txt`. Send back `_xsnotes_SUMMARY.txt` and the reports.
+5. You read them (Step 6). When clean: same batch with `xsnotes_batch_PLACE.txt`.
+6. The engineer checks every note against the checklist.
+7. To undo: `xsnotes_batch_REMOVE.txt` (removes only what the macro placed, from each file's log).
 
 **What the macro does:**
-- **Entry points:** `DryRun`, `PlaceNotes`, `RemovePlacedNotes`, plus dialog-free `DryRunBatch` / `PlaceNotesBatch` / `RemovePlacedNotesBatch` for Batch Process. The batch versions only work on the default model.
-- **Placing:** each note goes into its section drawing model with `AddElement`, without opening the model.
+- **Entry points:** `DryRun`, `PlaceNotes`, `RemovePlacedNotes`, plus dialog-free `DryRunBatch` / `PlaceNotesBatch` / `RemovePlacedNotesBatch` for Batch Process. The batch versions only work on the default model and return at once on any other.
+- **Models:** it activates each section model while building that model's note, then goes back to the model it started in (a few seconds per section).
 - **Grid:** it finds the grid from its widest horizontal line, and the scale from any ±N offset label pair.
 - **Duplicates:** it skips notes already on a section.
-- **Models:** it opens (activates) each section model while it builds that model's note, then goes back to the model it started in. That's slower than before (a few seconds per section).
 - **Level/color check:** it sets level, color and weight on the note and every line in it, reads them back, and stops (dry run included) if they didn't take.
-- **Output:** it writes a report per file, a summary per folder, and a log of placed element IDs for undo.
+- **Output:** a report per file, a summary line per file per run (`_xsnotes_SUMMARY.txt`), and a log of placed element IDs for undo.
 
 ## Step 6: Read the results with the engineer
 
-The engineer sends back `_xsnotes_SUMMARY.txt`, the per-file reports, error screenshots, and what the notes look like. Read every file. Check:
-- every file has a summary line
-- the text scale factor is the same idea in each file (x0.2 and x0.5 are both fine; it depends on the file's default model)
-- any CHECK flags, grid warnings, "beside the other note" lines and "already on" skips
+Read every file the engineer sends. Check:
+- every file has a summary line for the run, and the counts add up to the note total
+- each report's `Size check:` line reads about x1.000
+- no STOPPED lines, CHECK flags or grid warnings; "beside the other note" only where two notes share a corner; "already on" skips explained
+- after PLACE: `placed N` per file matches the counts you gave
 
 If the macro has a bug:
-1. Fix `scripts/make_macro.py` in this skill, not just the job copy.
-2. Regenerate, and ask the engineer to re-import (remove the old module first) and compile.
-3. Add the lesson to `references/lessons.md`.
+1. Fix `scripts/make_macro.py` in this skill, not a job copy.
+2. Run `bash tests/check.sh`. If the change is intended, update the known-good copy (`bash tests/check.sh --update`) and say so.
+3. Regenerate, and have the engineer remove the old module, import, compile.
+4. Add the lesson to `references/lessons.md`.
 
-If notes need moving after a real placement, `RemovePlacedNotes` in that file takes out exactly what the macro placed, then they place again.
+**Done:** every file's summary reads `PLACE placed N` matching the per-file counts, and the engineer has checked every note on the checklist.
 
-**Done:** every file's summary reads `PLACE placed N`, matching the per-file counts, and the engineer has checked the placed notes.
+## Known-good state
+
+Job 123456 (Nov 2026): 60 notes in 3 files, every one checked correct by the engineer, with the settings shown above. `tests/fixture/` holds a small sample job and `tests/expected/` the macro the current generator must produce for it; `tests/check.sh` regenerates and compares. Don't change the proven behavior (style-built notes, corner placement, color 15, the size check) without asking the engineer.

@@ -34,24 +34,21 @@ When you get an updated `.bas`, remove the old PlaceXSNotes module first (right-
 ## 3. Dry run (places nothing)
 
 1. **Back up the XS files.**
-2. Run **{{FIRST_FILE}} first.** It's the file the other files take their text size from.
-3. **By hand:** open the file, go to **Utilities > Macros > Macros...**, pick **DryRun**, and click **Run**. A box at the end shows the counts and the report path.
-4. **Or all files at once:**
-   - Tick **Auto-load** for {{PROJ}} in the VBA Manager.
-   - Open **Utilities > Batch Process** and add the XS files, with {{FIRST_FILE}} first.
-   - For each file, set **All Models** to the default model only.
-   - Use the command file `xsnotes_batch_DRYRUN.txt`.
+2. Tick **Auto-load** for {{PROJ}} in the VBA Manager.
+3. Open **Utilities > Batch Process** and add every XS file. Set **Initial Model** to **Default Model Only**.
+4. Use the command file `xsnotes_batch_DRYRUN.txt` and run it. It's slow-ish: the macro opens each section while it builds that section's note.
 
-Then read the output, which is written in the folder that holds the DGNs:
+Or by hand, one file at a time: open it, **Utilities > Macros > Macros...**, pick **DryRun**, click **Run**.
+
+Then read the output, written in the folder that holds the DGNs:
 - **`_xsnotes_SUMMARY.txt`:** one line per file per run. Every file must have a line. "STOPPED" plus a reason means nothing was placed in that file.
-- **`<file>_xsnotes_report.txt`:** one line per note, with where it would go. Look for **CHECK** flags, "beside the other note", grid warnings and the text scale factor at the top.
+- **`<file>_xsnotes_report.txt`:** one line per note, with where it would go. The `Size check:` line near the top should read about **x1.000**. Look for **CHECK** flags, "beside the other note" and grid warnings.
 
 ## 4. Place
 
-1. Run **PlaceNotes** by hand on **{{FIRST_FILE}}**. It asks you to confirm before placing anything.
-2. Open two or three sections and check the level, text size and corner position against an existing note. Include one with two notes in the same corner.
-3. If it looks right, place the rest by hand, or use Batch Process with `xsnotes_batch_PLACE.txt`.
-4. Check a few sections in each file, including any new sections and any note the report flagged.
+1. Same Batch Process setup, command file `xsnotes_batch_PLACE.txt`. Or **PlaceNotes** by hand in each file (it asks before placing).
+2. The summary should read `PLACE placed N` with the counts in the table above.
+3. Check the notes with the checklist spreadsheet: section model, corner, text, and in the Text Editor the style **{{STYLE}}** at its own size, level **{{LEVEL}}**, color {{COLOR}}.
 
 ## Undo
 

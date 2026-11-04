@@ -1,0 +1,10 @@
+{
+  "job": "000000", "vba_project": "XSNotes", "group_prefix": "ML - ",
+  "note_text": {"level": "XS_P_DRAINAGE", "text_style": "_Gen_Notes", "weight": 2, "color": 15, "class": "Primary"},
+  "grid": {"left_offset": -140, "right_offset": 140},
+  "placement": {"edge_gap": 1, "top_gap": 1, "side_gap": 3},
+  "text_size": {"drawing_scale_ft_per_in": 10},
+  "new_sections": {"drawing_seed": "DOT Cross Section Sheet - 10 Scale", "detail_scale": "1\"=10'", "group": "ML",
+                   "left_offset": -140, "right_offset": 140, "top_clearance": 10, "bottom_clearance": 5,
+                   "vertical_exaggeration": 1, "elevation_datum_spacing": 10, "create": "drawing model only, no sheet model"}
+}

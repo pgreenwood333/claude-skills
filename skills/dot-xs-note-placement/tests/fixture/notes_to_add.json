@@ -1,0 +1,11 @@
+[
+ {"id": "T-1", "kind": "drainage", "station": "100+00.00", "sta": 10000.0, "side": "LT", "profile_sheet": "WK-01LT",
+  "lines": ["100 A", "STA. 100+00.00", "SS-2 REQ'D LT", "TOP = 300.00'", "OPENINGS: 1 @ 18\""],
+  "dgn_file": "XS-A.dgn", "dgn_section": "100+00.0000", "dgn_offset_ft": 0.0, "status": "EXACT"},
+ {"id": "T-2", "kind": "drainage", "station": "100+01.00", "sta": 10001.0, "side": "LT", "profile_sheet": "WK-01LT",
+  "lines": ["100 B", "STA. 100+01.00", "W1 = 24\" (SK. 16°)"],
+  "dgn_file": "XS-A.dgn", "dgn_section": "100+00.0000", "dgn_offset_ft": 1.0, "status": "NEAREST"},
+ {"id": "T-3", "kind": "driveway", "station": "105+50.00 RT.", "sta": 10550.0, "side": "RT", "profile_sheet": "WK-02RT",
+  "lines": ["STA. 105+50.00 RT.", "24' DRIVE"],
+  "dgn_file": "XS-B.dgn", "dgn_section": "105+00.0000", "dgn_offset_ft": 50.0, "status": "CUT", "new_section_sta": "105+50.00"}
+]
