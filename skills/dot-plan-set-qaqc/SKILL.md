@@ -29,7 +29,9 @@ questions; the tool allows at most 4 options per question):
   - Index check: Detailed Index descriptions, Sheet IDs and sheet numbers vs the actual sheets
   - Spelling: misspellings, repeated words, placeholders and inconsistent spellings on every sheet
   - Note match: plan note vs profile note on the WK sheets, and profile note vs cross-section (9000) note
-    (always reports any drainage or driveway note shown in the profile but not the cross section, or vice versa)
+    (always reports any proposed drainage or driveway note shown in the profile but not the cross section, or vice versa;
+    removal-only notes go on the plan and profile only and are never flagged. `note_match.py --profile-only` lists every
+    profile note with its kind when there are no cross sections yet; the dot-xs-note-placement skill uses it)
 - Question 2 (multiSelect, header "WK checks"): "Which WK plan-profile checks should I run?"
   - Overlapping text, profile view only (Recommended)
   - Overlapping text, profile and plan view (plan view is noisy because utilities overlap)

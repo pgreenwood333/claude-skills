@@ -28,7 +28,10 @@ The engineer's rules:
    - "Drainage 262 B: shown on cross section XS-9019 but not in the profile"
    Its summary prints `one_sided_by_kind` (driveway / drainage / other, profile_only / xs_only): put those counts
    in your reply. "Other" notes (silt basins, barrier, pier protection, bridge) are counted but not flagged when
-   one-sided: the rule covers drainage and driveway notes only. A one-sided driveway or drainage flag may leave the findings file ONLY when you found the note
+   one-sided: the rule covers drainage and driveway notes only. **Removal-only notes** (kind `removal`: EXIST. PIPE /
+   REMOVE / ABANDON / FLOWABLE FILL with no proposed structure or pipe) belong on the plan and profile only, never the
+   cross section (engineer's rule, Nov 2026): counted, never flagged. A note that combines a proposed structure with a
+   removal is a normal drainage note. A one-sided driveway or drainage flag may leave the findings file ONLY when you found the note
    on the other view, and then its entry in `findings/notematch_cleared.json` names that sheet and quotes the note
    (`"sheet": "XS-9031", "seen": "`29' DRIVE REQ'D. LT.`"`). If the note is there but says something different, keep a flag and turn it into
    a mismatch. "Normally omitted", "minor" or "probably intentional" are never reasons to drop one.

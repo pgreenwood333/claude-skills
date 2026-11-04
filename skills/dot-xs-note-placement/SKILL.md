@@ -7,7 +7,7 @@ description: "Add missing drainage and driveway notes to DOT OpenRoads Designer 
 
 You build everything; the engineer runs it in OpenRoads Designer on Windows. Claude can't edit a DGN from the Mac, because V8 DGN and `.mvba` are closed Bentley formats, so the deliverable is a VBA module (`.bas`) plus instructions.
 Work folder: `/Volumes/PGExtHD/OpenRoads/<job>_xs_notes/` (heavy files stay on the external drive).
-Scripts: this skill's `scripts/` (`$X`). Profile notes come from the QA/QC skill: `$Q` = `~/.claude/skills/dot-plan-set-qaqc/scripts`.
+Scripts: this skill's `scripts/` (`$X`). Which notes go on the cross sections comes from the QA/QC skill's note match: `$Q` = `~/.claude/skills/dot-plan-set-qaqc/scripts`.
 Read `references/lessons.md` before you start. It lists every way the first job went wrong.
 
 **Hard rules**
@@ -16,42 +16,53 @@ Read `references/lessons.md` before you start. It lists every way the first job 
 - **Never script cutting cross sections or named boundaries, and never write to a DGN.** New sections are cut by hand: drawing model only, no sheet model. The engineer would rather do it than risk the file.
 - Terminal commands for the engineer start with `cd <absolute path>` and are complete and copy-pasteable, one per block.
 
-## Step 0: Ask for the inputs (always first)
+## Step 0: Ask how to find the notes (always first)
 
-Ask for whatever the engineer hasn't already given:
-1. **The plan-profile sheets** (the WK sheet PDF) and **the cross-section sheets** (XS PDF). If they're separate, combine them, plans first then XS. Or, if a QA/QC run already exists for this set, the path to its `qaqc_work/`.
-2. **The XS DGN files** (often a zip in Google Drive): the cross-section files plus everything they reference, i.e. corridors, alignments, terrain and drainage.
-3. **Scope:** any stations already fixed ("done through 337+08.26"), or a station range.
-4. **Software:** OpenRoads Designer version and year, and whether the sections are dynamic (named-boundary) cross sections. This skill is for dynamic sections. If they're plain drawn sheets, ask how the sections are organized before going on.
+Open with one question (AskUserQuestion), recommendation first, and ask for the plan PDF with it. The three starting points:
 
-## Step 1: Get the exact profile notes
+1. **"Here's my QA/QC results"** (recommended when a QA/QC note match was run on this set). Ask for the `qaqc_work/` folder (or `findings_reviewed.json`). Only the profile notes it flagged "MISSING on cross section" get placed, not every note. The QA/QC already leaves out removal-only notes (EXIST. PIPE / REMOVE / ABANDON / FLOWABLE FILL with nothing proposed).
+2. **"No cross-section notes placed yet"** (fresh sections). Ask for the plan-profile (WK) sheets only. Every proposed drainage and driveway note in the profiles gets placed. The QA/QC note match decides what counts: drainage and driveway kinds, never removal-only or "other" notes (silt basins, barrier, bridge).
+3. **"Some sections are already noted, no QA/QC run."** Ask for the plan-profile sheets and the cross-section sheets (combine into one PDF: plans first, then XS). The QA/QC note match compares them, and only the notes missing from the XS get placed.
 
-If a QA/QC run exists, use its `qaqc_work/findings_reviewed.json` (or `qaqc_work/notematch/note_match.json`). Otherwise run only the note match from `dot-plan-set-qaqc`. Follow that skill's Step 1 (setup) and Step 2 (index) quality gate:
+Also ask for whatever else isn't given yet:
+- **Scope:** stations already fixed ("done through 337+08.26"), or a station range.
+- **Software:** OpenRoads Designer version, and whether the sections are dynamic (named-boundary) sections. This skill is for dynamic sections; if they're plain drawn sheets, ask how the sections are organized before going on.
+
+The XS DGN files come after the note list (Step 3).
+
+## Step 1: Get the notes from the QA/QC note match
+
+`$Q` = `~/.claude/skills/dot-plan-set-qaqc/scripts`. For starting points 2 and 3, follow that skill's Step 1 (setup) and Step 2 (index) quality gate, then run only its note match:
 
 ```bash
 eval "$(bash $Q/setup_env.sh)"
-$PY $Q/build_index.py index "<plans+xs.pdf>" <work>/qaqc_work/index
+$PY $Q/build_index.py index "<plans.pdf>" <work>/qaqc_work/index
 $PY $Q/build_index.py sheets <work>/qaqc_work/index
+# starting point 2 (no XS notes yet):
+$PY $Q/note_match.py "<plans.pdf>" <work>/qaqc_work/notematch --index <work>/qaqc_work/index --profile-only
+# starting point 3 (compare against the XS sheets):
 $PY $Q/note_match.py "<plans+xs.pdf>" <work>/qaqc_work/notematch --index <work>/qaqc_work/index
 ```
 
-Check the printed counts (WK pages, XS pages, profile notes, `profile_without_xs`). If any is 0, stop and ask.
-Before trusting a "missing on cross section" note, spot-check a few against the XS sheets as that skill's note-match brief describes (search the index for the ID and station). The note text is taken line for line from the profile.
+Check the printed counts (`wk_pages`, `xs_pages`, `profile_notes`, `profile_without_xs`). If any that should be there is 0, stop and ask.
+
+**Starting point 3 needs the by-eye check.** The script misses some XS notes it can't read (on 123456 a fresh run flagged 6 notes the reviewed QA/QC had already found on the XS: 372+65, 372+75, 389+00, 391+20, 430+38 among them). For every "MISSING on cross section" flag, search the XS sheets for it as the QA/QC note-match brief says (`references/agent_notematch.md` step 3: search the index for the ID and the station; compare by eye). Leave out any you find, with `--exclude`. Starting point 1 already had this review.
 
 ## Step 2: Choose the notes
 
 ```bash
-python3 $X/select_notes.py <findings json> <work> [--skip-through <sta>] [--only-from <sta> --only-to <sta>]
+python3 $X/select_notes.py <work>/qaqc_work/notematch/note_match.json <work> [--skip-through <sta>] [--only-from <sta> --only-to <sta>] [--exclude NM-142,NM-156]
 ```
 
-- **Removal-only rule (default).** A drainage note that only removes or abandons existing drainage (EXIST. PIPE, REMOVE, flowable fill, with no proposed structure) belongs on the plan and profile only, so it's dropped. A note that combines a proposed structure with a removal stays.
-- **Review the drop list.** Show it to the engineer with the counts and confirm.
+(Starting point 1: pass `qaqc_work/findings_reviewed.json` instead.) It knows which starting point it's in from the file.
+- **Removal-only rule.** Kept as a safety net for older QA/QC results: a note that only removes or abandons existing drainage is dropped; one that combines a proposed structure with a removal stays.
+- **Show the engineer** the count by kind, the drop list, and (starting point 2) the full list, since it's every proposed note. Confirm before going on.
 - **Sides.** Each note's side comes from its profile sheet (WK-30**LT**). Every `ASK:` line (no side) must be answered.
-- **Notes missing from the profile.** Notes on the XS but not in the profile are listed, not placed. Tell the engineer about them.
+- **Notes missing from the profile.** Notes on the XS but not in the profile are listed, not placed. Tell the engineer.
 
-## Step 3: Match notes to sections in the DGNs
+## Step 3: The XS files, then every note without an exact section
 
-Unzip the DGNs into `<work>/dgn/` (their own folder), then:
+Now ask for **the XS DGN files** (often a zip in Google Drive: the cross-section files plus everything they reference). Unzip into `<work>/dgn/`, then:
 
 ```bash
 pip3 install olefile   # once
@@ -59,16 +70,14 @@ python3 $X/match_sections.py <work> <work>/dgn/<path>/XS-*.dgn [--group MLUS51]
 ```
 
 It reads the drawing-model names (`<group> - <station>`, read-only) and gives each note a status:
-- **EXACT:** a section exists at the note's station.
-- **CLOSE:** a section is within 0.5 ft. It's the same structure; the note just rounds the station.
-- **NEEDS DECISION:** the nearest section is farther away than that.
+- **EXACT:** a section at the note's station. **CLOSE:** within 0.5 ft (same structure, the note rounds the station).
+- **NEEDS DECISION:** the nearest section is farther away.
 
-For every NEEDS DECISION note, ask the engineer: **place on the nearest section**, **cut a new section**, or **skip**. Show the station, structure, nearest section and gap, ideally in one table, then ask. Record the answers in `<work>/decisions.json` (`{"NM-151": "nearest", "NM-181": "cut"}`) and re-run with `--decisions <work>/decisions.json`.
-**Any group question** (`ASK:` several model groups) gets asked too.
+Give the engineer **one table of every NEEDS DECISION note**: station, structure, nearest section, gap. For each: **nearest section**, **cut a new section**, or **skip**. Record answers in `<work>/decisions.json` (`{"NM-151": "nearest", "NM-181": "cut"}`) and re-run with `--decisions <work>/decisions.json`. Any `ASK:` about model groups gets asked too.
 
 ## Step 4: Settings: level, color, style, placement
 
-Ask for the screenshots and answers below, and confirm anything you read from them. The DOT standard (proven on job 123456, every note checked by the engineer) is the default; confirm it still applies rather than re-deriving it:
+Ask about the defaults in one message: show the DOT standard below (proven on job 123456, every note checked by the engineer) and ask the engineer to confirm or say what's different. Only ask for screenshots (Change Attributes, Text Editor, Place Named Boundary) when something differs or there are new sections to cut and the cut settings aren't known.
 - **Change Attributes on an existing XS note:** level, color, weight. Standard: **XS_P_DRAINAGE, color 15** (the number, not ByLevel), weight 2.
 - **The Text Editor on an existing note:** text style. Standard: **_Gen_Notes at its own size (0.01)**, Engineering Vert. Also check the note's line format against the profile text.
 - **Place Named Boundary, Civil Cross Section, as used for the existing sections:** drawing seed, detail scale, group, left/right offsets, top/bottom clearance, vertical exaggeration. These go in the run guide for the sections the engineer cuts.
@@ -113,14 +122,16 @@ In chat, lead with:
 - the list of new sections to cut, with stations and settings
 - the run order (below)
 
-**Run order for the engineer:**
-1. Cut the new sections (drawing model only).
-2. VBA Manager: load/create their own project, import the `.bas`, Debug > Compile, Save.
-3. Back up the XS files.
-4. Batch Process, every XS file, **Initial Model = Default Model Only**, command file `xsnotes_batch_DRYRUN.txt`. Send back `_xsnotes_SUMMARY.txt` and the reports.
-5. You read them (Step 6). When clean: same batch with `xsnotes_batch_PLACE.txt`.
-6. The engineer checks every note against the checklist.
-7. To undo: `xsnotes_batch_REMOVE.txt` (removes only what the macro placed, from each file's log).
+**The engineer's steps** (exactly these; `HOW_TO_RUN.md` spells them out with the job's names):
+1. Cut any new sections first (drawing model only, no sheet model).
+2. Search ribbon → **VBA Manager** → **New** → name it **XSNotes** (their own project; skip if it exists, just load it).
+3. Click **XSNotes** → **Show the VBA Editor** → click **XSNotes** in the left sidebar → **File > Import File** → pick `PlaceXSNotes.bas`.
+4. **Debug > Compile XSNotes.** Nothing shows → **File > Save**. An error box → screenshot it to Claude, stop.
+5. Search ribbon → **Batch Process** → **Initial Model: Default Model Only** → **Add** files (every XS file on the list) → **Command File:** `xsnotes_batch_DRYRUN.txt` → **Process**.
+6. From the folder that holds the DGNs on the C drive, send Claude `_xsnotes_SUMMARY.txt` and every `*_xsnotes_report.txt`.
+7. Only when Claude gives the go-ahead: same Batch Process, command file `xsnotes_batch_PLACE.txt` → **Process**.
+8. Check the notes were added, using the checklist spreadsheet.
+9. If any were added wrong: same Batch Process, command file `xsnotes_batch_REMOVE.txt` → **Process** (removes only what the macro placed), tell Claude what was wrong.
 
 **What the macro does:**
 - **Entry points:** `DryRun`, `PlaceNotes`, `RemovePlacedNotes`, plus dialog-free `DryRunBatch` / `PlaceNotesBatch` / `RemovePlacedNotesBatch` for Batch Process. The batch versions only work on the default model and return at once on any other.

@@ -29,42 +29,37 @@ Cut each one at **exactly** the station listed. The macro finds the section by i
 
 The macro never cuts or changes sections. Bentley's VBA has no supported way to create civil named boundaries, so this step stays manual.
 
-## 2. Load the macro (once)
+## 2. Load the macro
 
-1. Copy `PlaceXSNotes.bas` to the PC that has OpenRoads.
-2. Go to **Utilities > Macros > VBA Manager**. Load your own project **XSNotes**, or click **New** to create it (it saves as `XSNotes.mvba`).
-   - Don't use a shared office project (`status`, `revisions` and so on). Check that **XSNotes** is the project highlighted in the VBA Editor's Project tree before you import.
-3. In the **VBA Editor**, click **XSNotes**, then **File > Import File...** and pick `PlaceXSNotes.bas`.
-4. Check that **PlaceXSNotes** shows up under **XSNotes > Modules**.
-5. **Debug > Compile XSNotes.** It should show nothing. If it stops on a line, send a screenshot.
-6. **File > Save XSNotes.**
+1. Copy `PlaceXSNotes.bas` and the three `xsnotes_batch_*.txt` command files to the PC that has OpenRoads.
+2. **Search ribbon → VBA Manager → New →** name it **XSNotes**. (Already have XSNotes? Load it instead. Never use a shared office project like `status`.)
+3. Click **XSNotes** → **Show the VBA Editor**.
+4. Click **XSNotes** in the left sidebar → **File → Import File** → pick `PlaceXSNotes.bas`.
+5. **Debug → Compile XSNotes.**
+   - Nothing shows: **File → Save**.
+   - An error box: screenshot it to Claude and stop here.
 
-When you get an updated `.bas`, remove the old PlaceXSNotes module first (right-click > Remove, and answer **No** to exporting), then import the new one.
+Updated `.bas`? First right-click the old **PlaceXSNotes** module → **Remove** (answer **No** to exporting), then import the new one and compile again.
 
 ## 3. Dry run (places nothing)
 
 1. **Back up the XS files.**
-2. Tick **Auto-load** for XSNotes in the VBA Manager.
-3. Open **Utilities > Batch Process** and add every XS file. Set **Initial Model** to **Default Model Only**.
-4. Use the command file `xsnotes_batch_DRYRUN.txt` and run it. It's slow-ish: the macro opens each section while it builds that section's note.
+2. **Search ribbon → Batch Process.**
+3. **Initial Model: Default Model Only.**
+4. **Add** files: every XS file in the table above.
+5. **Command File:** `xsnotes_batch_DRYRUN.txt`.
+6. **Process** the batch job. It's slow-ish: the macro opens each section while it builds that section's note.
+7. In the folder on the C drive that holds the DGNs, find `_xsnotes_SUMMARY.txt` and every `<file>_xsnotes_report.txt`, and send them all to Claude.
 
-Or by hand, one file at a time: open it, **Utilities > Macros > Macros...**, pick **DryRun**, click **Run**.
+## 4. Place (only after Claude gives the go-ahead)
 
-Then read the output, written in the folder that holds the DGNs:
-- **`_xsnotes_SUMMARY.txt`:** one line per file per run. Every file must have a line. "STOPPED" plus a reason means nothing was placed in that file.
-- **`<file>_xsnotes_report.txt`:** one line per note, with where it would go. The `Size check:` line near the top should read about **x1.000**. Look for **CHECK** flags, "beside the other note" and grid warnings.
+1. Same Batch Process: switch the **Command File** to `xsnotes_batch_PLACE.txt` → **Process**.
+2. `_xsnotes_SUMMARY.txt` should read `PLACE placed N` with the counts in the table above.
+3. Check every note was added right, with the checklist spreadsheet: section, corner, text, and in the Text Editor the style **_Gen_Notes** at its own size, level **XS_P_DRAINAGE**, color 15.
 
-## 4. Place
+## 5. If notes were added wrong
 
-1. Same Batch Process setup, command file `xsnotes_batch_PLACE.txt`. Or **PlaceNotes** by hand in each file (it asks before placing).
-2. The summary should read `PLACE placed N` with the counts in the table above.
-3. Check the notes with the checklist spreadsheet: section model, corner, text, and in the Text Editor the style **_Gen_Notes** at its own size, level **XS_P_DRAINAGE**, color 15.
-
-## Undo
-
-**RemovePlacedNotes**, run by hand in a file, deletes exactly the notes the macro placed in that file. It reads them from `<file>_xsnotes_log.txt` and touches nothing else. After that you can change the settings and place them again.
-
-For several files at once, use Batch Process (default model only) with `xsnotes_batch_REMOVE.txt`. Each file adds a `REMOVE` line to `_xsnotes_SUMMARY.txt` saying how many notes it removed.
+Same Batch Process: switch the **Command File** to `xsnotes_batch_REMOVE.txt` → **Process**. It deletes only the notes the macro placed (from each file's `_xsnotes_log.txt`) and touches nothing else. Each file adds a `REMOVE` line to the summary (`8 of 8 placed notes removed`). Tell Claude what was wrong; after the fix, dry run and place again.
 
 ## If something stops
 

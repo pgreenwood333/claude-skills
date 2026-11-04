@@ -5,9 +5,14 @@
                   [--skip-through 337+08.26] [--only-from 300+00] [--only-to 510+00]
                   [--keep-removal-only] [--exclude NM-012,NM-044]
 
-Input: the QA/QC note-match output (dot-plan-set-qaqc: qaqc_work/notematch/note_match.json, or the reviewed
-findings qaqc_work/findings_reviewed.json). Every finding whose discrepancy says "MISSING on cross section" is a
-profile note with no cross-section copy; its text is taken line for line from the profile.
+Input: the QA/QC note-match output (dot-plan-set-qaqc). Three starting points:
+  A. No cross-section notes placed yet: note_match.py --profile-only on the plan-profile sheets. Every proposed
+     drainage and driveway profile note is selected (kinds "drainage"/"driveway"; removal-only and "other" are not).
+  B. A QA/QC run exists (qaqc_work/findings_reviewed.json or notematch/note_match.json): only the findings whose
+     discrepancy says "MISSING on cross section" are selected. The QA/QC no longer flags removal-only notes.
+  C. No QA/QC run, some sections already noted: note_match.py on the plans + XS sheets, then as B.
+The mode is picked from the file: a profile-only note_match.json (xs_pages = 0) is A, anything else is B/C.
+Note text is taken line for line from the profile.
 
 Engineer's rule (default): a drainage note that ONLY removes or abandons existing drainage (EXIST. PIPE, REMOVE,
 flowable fill, with no proposed structure or pipe) goes on the plan and profile only, not the cross sections, so it
@@ -39,6 +44,31 @@ def removal_only(lines):
     return bool(REMOVES.search(t)) and not PROPOSED.search(t)
 
 
+def fmt_sta(v):
+    return f"{int(v // 100)}+{v % 100:05.2f}"
+
+
+def from_profile(data):
+    """Profile-only note_match.json -> findings-shaped records for every proposed drainage/driveway note."""
+    out, seen = [], set()
+    for n in sorted(data.get("profile_notes", []), key=lambda n: n["sta"]):
+        if n.get("kind") not in ("drainage", "driveway", "removal"):   # removal is dropped below, and listed
+            continue
+        lines = [re.sub(r"\s+", " ", t).strip() for t in n["lines"] if t.strip()]
+        key = (n.get("sid") or lines[0], round(n["sta"], 2))
+        if key in seen:   # the same note on two WK sheets (sheet break)
+            continue
+        seen.add(key)
+        station = f"{fmt_sta(n['sta'])} ({n['sid']})" if n.get("sid") else re.sub(r"^STA\.\s*", "", lines[0])
+        out.append({"id": f"PN-{len(out) + 1:03d}", "discrepancy": "MISSING on cross section",
+                    "note": {"sta": n["sta"], "station": station, "kind": n["kind"],
+                             "profile": f"{n.get('sheet', '')}: " + " | ".join(lines)}})
+    if not out:
+        sys.exit("STOP: the profile-only note match found no drainage or driveway notes.\n"
+                 "FIX: check the WK pages were read (its summary prints wk_pages and profile_notes).")
+    return out
+
+
 def side_of(sheet, lines):
     m = re.search(r"(LT|RT)\b", sheet or "")
     if m:
@@ -58,6 +88,9 @@ def main():
     a = ap.parse_args()
 
     data = json.load(open(a.findings))
+    if isinstance(data, dict) and data.get("summary", {}).get("xs_pages") == 0:
+        data = dict(findings=from_profile(data))   # starting point A: every proposed note in the profile
+        print("mode A: no cross sections compared - every proposed drainage and driveway profile note is a candidate")
     findings = data["findings"] if isinstance(data, dict) else data
     if not isinstance(findings, list) or not findings:
         sys.exit(f"STOP: no findings list in {a.findings}\nFIX: point at qaqc_work/notematch/note_match.json "
