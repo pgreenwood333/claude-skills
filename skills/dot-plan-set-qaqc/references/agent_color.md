@@ -14,7 +14,7 @@ The rule (DOT plan-profile sheets as printed):
   drainage; the matching driveway pipe label in the plan view ("40' - XX\" ALT REQ'D.") prints blue. Never ask
   for part of a driveway note to be blue. Roadway grades, VPI/VPC data, earthwork, erosion control (silt basins), ROW and
   easement acquisition (TEMPORARY EASEMENT REQ'D) are black.
-Read `qaqc_memory/lessons.md` (section "color") before starting if the orchestrator gives you one; those are the
+Read the skill's `references/lessons.md` (section "color") before starting if the orchestrator gives you one; those are the
 engineer's past corrections and they override the defaults above.
 
 1. Measure (exact):

@@ -122,7 +122,7 @@ def cmd_append(work, mem, run, plan_set, checks):
     # ---- how it will improve
     imp = by("improve") + [f"Proposed lesson (needs your OK): {l}"
                            for l in dict.fromkeys(l for g in rounds for l in g.get("lessons", []))]
-    lessons_p = os.path.join(mem, "lessons.md")
+    lessons_p = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "references", "lessons.md")
     if os.path.exists(lessons_p):
         n = sum(1 for l in open(lessons_p) if l.startswith("- "))
         imp.append(f"{n} approved lesson(s) in lessons.md were applied this run")

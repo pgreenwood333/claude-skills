@@ -4,7 +4,7 @@
   learn.py record   <work_dir> <memory_dir> [--plan-set NAME]      after the run is delivered
   learn.py feedback <memory_dir> <run_id> <flag_id> confirmed|rejected|missed "<note>" [--task T]
   learn.py lessons  <memory_dir>                                  candidate lessons to show the engineer
-  learn.py accept   <memory_dir> <task> "<lesson text>"           engineer approved: add to lessons.md
+  learn.py accept   <task> "<lesson text>"                        engineer approved: add to the skill's lessons.md
   learn.py stats    <memory_dir>                                  precision per check over time
   learn.py ingest   <returned.xlsx> <memory_dir> <run_id> [--work <work_dir>]
                     read the engineer's Review dropdowns from a returned workbook: N/A = the flag was wrong
@@ -12,9 +12,10 @@
                     still open (nothing recorded). With --work, also saves each answer on the finding
                     (`engineer_review`) so a rebuilt workbook keeps the engineer's choices.
 
-Files in <memory_dir> (keep it with the user's plan-set folders, never inside the skill):
+Approved lessons live INSIDE the skill, at references/lessons.md, so they ship with it (GitHub, Cowork, any machine).
+  One section per check; agents and the grader read it at the start of a run.
+Files in <memory_dir> (run history; keep it with the user's plan-set folders, never inside the skill):
   ledger.jsonl  one line per flag per run: run, task, rule/keywords, grader verdict, engineer verdict, notes
-  lessons.md    approved lessons, one section per check; agents and the grader read it at the start of a run
   audit_log.md  one readable entry per run, appended by audit_log.py (what it looked at, what ran, what went
                 wrong, how it will improve)
 Safety against learning the wrong thing (drift):
@@ -26,6 +27,16 @@ import datetime, json, os, re, sys
 from collections import Counter, defaultdict
 
 CAP = 12
+LESSONS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "references", "lessons.md")
+
+
+def check_old_lessons(mem):
+    """Lessons used to live in <memory_dir>/lessons.md. Stop if one is still there, so none get lost."""
+    old = os.path.join(mem, "lessons.md")
+    if os.path.exists(old):
+        sys.exit(f"STOP: found an old lessons file at {old}. Approved lessons now live in the skill at {LESSONS}.\n"
+                 f"FIX: copy any lessons that are not already in {LESSONS} into it (same sections), then rename "
+                 f"{old} to lessons.md.moved-to-skill and re-run.")
 TASK_BY_PREFIX = {"SPL": "spelling", "NM": "notematch", "OVL": "overlap", "COL": "color", "IDX": "index",
                   "QTY": "quantity", "ORD": "index"}
 
@@ -180,14 +191,14 @@ def cmd_lessons(mem):
     for (task, n), runs in gl.items():
         if len(runs) >= 2:
             props.append(dict(task=task, kind="grader", pattern=n, runs=len(runs)))
-    full = [t for t, n in section_counts(mem).items() if n >= CAP]
+    full = [t for t, n in section_counts().items() if n >= CAP]
     print(json.dumps(dict(proposed=props, sections_full=full,
                           how="Show these to the engineer. Only `accept` the ones they agree with, in your own "
                               "words, as a rule the agents can follow."), indent=1))
 
 
-def section_counts(mem):
-    p = os.path.join(mem, "lessons.md")
+def section_counts():
+    p = LESSONS
     counts, cur = Counter(), None
     if os.path.exists(p):
         for line in open(p):
@@ -198,13 +209,12 @@ def section_counts(mem):
     return counts
 
 
-def cmd_accept(mem, task, text):
-    os.makedirs(mem, exist_ok=True)
-    p = os.path.join(mem, "lessons.md")
+def cmd_accept(task, text):
+    p = LESSONS
     lines = open(p).read().splitlines() if os.path.exists(p) else [
         "# QA/QC lessons (approved by the engineer)", "",
         "Agents and the grader read their section before a run. These override the defaults in the briefs.", ""]
-    if section_counts(mem).get(task, 0) >= CAP:
+    if section_counts().get(task, 0) >= CAP:
         sys.exit(f"{task} already has {CAP} lessons: merge or remove some first")
     date = datetime.date.today().isoformat()
     head = f"## {task}"
@@ -231,6 +241,8 @@ def main():
     name = None
     if "--plan-set" in rest:
         i = rest.index("--plan-set"); name = rest[i + 1]; rest = rest[:i] + rest[i + 2:]
+    if cmd in ("record", "lessons", "feedback", "ingest") and rest:
+        check_old_lessons(rest[1] if cmd in ("record", "ingest") else rest[0])
     if cmd == "record":
         cmd_record(rest[0], rest[1], name)
     elif cmd == "feedback":
@@ -238,7 +250,9 @@ def main():
     elif cmd == "lessons":
         cmd_lessons(rest[0])
     elif cmd == "accept":
-        cmd_accept(*rest[:3])
+        if len(rest) != 2:
+            sys.exit('usage: learn.py accept <task> "<lesson text>"  (lessons are saved in the skill, not the memory dir)')
+        cmd_accept(*rest)
     elif cmd == "ingest":
         work = None
         if "--work" in rest:

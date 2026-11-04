@@ -41,8 +41,10 @@ questions; the tool allows at most 4 options per question):
 Run only what was picked. Indexing (Step 2) always runs, because every check uses it.
 
 Memory: find `qaqc_memory/` beside the PDF or in a parent folder (the nearest one wins); if there is none, create it
-beside the folder that holds the PDF. If `qaqc_memory/lessons.md` exists, read it now and give each agent and the
-grader its section. These are the engineer's approved corrections from past runs and override the briefs.
+beside the folder that holds the PDF (it holds the run history and audit log). Read `references/lessons.md` (in this
+skill) now and give each agent and the grader its section. These are the engineer's approved corrections from past
+runs and override the briefs. If an old `qaqc_memory/lessons.md` exists, STOP: tell the user, merge its lessons into
+`references/lessons.md`, and rename the old file `lessons.md.moved-to-skill` (learn.py refuses to run until then).
 Also read the last entry of `qaqc_memory/audit_log.md` if it exists: its "How it will improve" list is what this run
 should do better.
 
@@ -192,7 +194,8 @@ When they send the workbook back with the Review column filled in, read it in:
 Ask about any N/A row whose reason is not obvious, and tell them how many of each it read.
 Then run `learn.py lessons <qaqc_memory>`. It proposes a lesson only when the same pattern repeats in 2 or more runs
 (one bad call is not a pattern). Show the proposals to the user and add only the ones they approve, written as a rule
-the agents can follow: `learn.py accept <qaqc_memory> <task> "<rule>"`. Never add a lesson they did not approve.
+the agents can follow: `learn.py accept <task> "<rule>"` (it writes `references/lessons.md` inside the skill, so the lesson ships with the
+skill to GitHub and Cowork). Never add a lesson they did not approve.
 `learn.py stats` shows precision per check over time.
 
 ## Rules that apply to every agent
