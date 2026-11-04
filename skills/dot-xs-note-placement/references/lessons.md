@@ -14,6 +14,7 @@ at most 12 per section (merge old ones when a section is full).
 - Match notes against the DGN drawing-model names (`<group> - <station>`), not the PDF: the DGNs can be newer and already have sections the PDF lacks. (2026-11-03)
 - A note within 0.5 ft of a section is the same structure (the note rounds the station). Anything farther is the engineer's call: nearest section, cut new, or skip. On 123456 they took nearest for gaps up to ~3 ft and cut new sections for 4 to 30 ft. (2026-11-03)
 - Never script cutting cross sections or named boundaries, and never write a DGN or .mvba. The engineer cuts new sections by hand, drawing model only, no sheet model. (2026-11-03)
+- From the Mac only the DGN model names can be read (OLE + zlib streams); element text is packed. Don't try to decode it, and don't suggest Bentley's MicroStation MCP (Windows-only, no civil tools) for this. (2026-11-03)
 - Some sections have no -140/140 offset labels (508+30.75 on 123456). Find the grid edges from its widest horizontal line; use any matching offset-label pair only for the scale. (2026-11-03)
 
 ## settings

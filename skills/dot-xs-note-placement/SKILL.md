@@ -8,7 +8,7 @@ description: "Add missing drainage and driveway notes to DOT OpenRoads Designer 
 You build everything; the engineer runs it in OpenRoads Designer on Windows. Claude can't edit a DGN from the Mac, because V8 DGN and `.mvba` are closed Bentley formats, so the deliverable is a VBA module (`.bas`) plus instructions.
 Work folder: `/Volumes/PGExtHD/OpenRoads/<job>_xs_notes/` (heavy files stay on the external drive).
 Scripts: this skill's `scripts/` (`$X`). Which notes go on the cross sections comes from the QA/QC skill's note match: `$Q` = `~/.claude/skills/dot-plan-set-qaqc/scripts`.
-Read `references/lessons.md` before you start. It lists every way the first job went wrong.
+**Lessons and memory (same as the QA/QC skill).** Read `references/lessons.md` now: one section per stage (notes, sections, settings, macro, steps), each an engineer-approved rule from a past mistake. They override the defaults below. Job history lives in `xs_notes_memory/` (the nearest one above the work folder, `/Volumes/PGExtHD/OpenRoads/xs_notes_memory/` for jobs there), written by `scripts/learn.py`; read the last entry of its `audit_log.md` before you start.
 
 **Hard rules**
 - **When you're unsure about anything, ask.** That includes which notes, which side, which section, level, style, size, placement, file, VBA project, or what a report means. Use AskUserQuestion, with your recommendation as the first option. Never guess and carry on.
@@ -154,6 +154,20 @@ If the macro has a bug:
 2. Run `bash tests/check.sh`. If the change is intended, update the known-good copy (`bash tests/check.sh --update`) and say so.
 3. Regenerate, and have the engineer remove the old module, import, compile.
 4. Add the lesson to `references/lessons.md`.
+
+## Step 7: Learn from the job
+
+```bash
+python3 $X/learn.py record <work> --stage place          # after PLACE; prints the run id
+python3 $X/learn.py ingest <returned checklist.xlsx> <memory> <run_id>   # OK / Fix answers from the engineer
+python3 $X/learn.py feedback <memory> <run_id> <note_id|RUN> ok|fix|bug "<their words>" [--stage notes|sections|settings|macro|steps]
+python3 $X/learn.py lessons <memory>
+```
+
+- Record **every** correction as it comes in during the job, not just at the end: a Fix on the checklist, a macro error or wrong result (`bug`, stage `macro`), a wrong step or confusing instruction (`steps`), a setting the engineer changed (`settings`). Use their words.
+- `lessons` proposes a rule when the same kind of fix shows up in 2 or more jobs, and every bug at once (fix the code first; the lesson records why).
+- Show the proposals to the engineer. Only for the ones they agree with: `learn.py accept <stage> "<rule>"`, written as a rule the next job can follow. It goes into `references/lessons.md` in the skill (dated, at most 12 per stage), so it ships to GitHub and Cowork. Never add a lesson they didn't approve.
+- `learn.py stats <memory>` shows notes placed, fixes and bugs per job.
 
 **Done:** every file's summary reads `PLACE placed N` matching the per-file counts, and the engineer has checked every note on the checklist.
 
