@@ -41,3 +41,6 @@ These all happened. Use them to set things up right the first time and to recogn
 - Some sections (508+30.75 on 123456) have no "-140"/"140" labels. Find the grid's edges from its widest horizontal line, and use any matching ±N offset label pair only for the scale.
 - Side comes from the profile sheet suffix (WK-30**LT**). The note text can name both sides (box culverts), and junction-box notes may name neither.
 - A note station that rounds the section station (388+41 vs 388+40.58) is the same structure. Anything farther than ~0.5 ft is the engineer's call: nearest section, cut new, or skip. On 123456 they chose nearest for gaps up to about 3 ft at 382+91 and 383+71, and for 455 B (1 ft). They chose to cut new sections for 4 to 30 ft.
+
+## Undo
+- The log is written with LF line ends. VBA `Line Input` only splits on CR/CRLF, so the first RemovePlacedNotesBatch read each log as one line and removed nothing, then renamed the logs. It now reads the file whole and splits on LF, and only renames the log when every note was removed.

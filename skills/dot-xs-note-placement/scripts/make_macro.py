@@ -255,33 +255,36 @@ End Sub
 
 ' Deletes the elements listed in the log (and nothing else), then renames the log so it can't run twice.
 Private Function DoRemove() As String
-    Dim logPath As String, f As Integer, ln As String, parts() As String
-    Dim m As ModelReference, el As Element, n As Long, bad As String
+    Dim logPath As String, f As Integer, body As String, ln As Variant, parts() As String
+    Dim m As ModelReference, el As Element, n As Long, bad As String, total As Long
     logPath = OutPath("_log.txt")
-    f = FreeFile: Open logPath For Input As #f
-    Do While Not EOF(f)
-        Line Input #f, ln
-        parts = Split(ln, vbTab)
+    ' the log is written with LF line ends; Line Input only splits on CR, so read it whole and split on LF
+    f = FreeFile: Open logPath For Binary Access Read As #f
+    body = Space$(LOF(f)): Get #f, , body
+    Close #f
+    For Each ln In Split(Replace(body, vbCr, ""), vbLf)
+        parts = Split(CStr(ln), vbTab)
         If UBound(parts) >= 2 Then
+            total = total + 1
             Set m = FindModelByName(parts(1))
             If m Is Nothing Then
                 bad = bad & parts(0) & ": model " & parts(1) & " not found" & vbLf
             Else
                 Set el = Nothing
                 On Error Resume Next
-                Set el = m.GetElementByID(DLongFromString(parts(2)))
+                Set el = m.GetElementByID(DLongFromString(Trim$(parts(2))))
                 On Error GoTo 0
                 If el Is Nothing Then
-                    bad = bad & parts(0) & ": element " & parts(2) & " already gone" & vbLf
+                    bad = bad & parts(0) & ": element " & parts(2) & " not found" & vbLf
                 Else
                     m.RemoveElement el: n = n + 1
                 End If
             End If
         End If
-    Loop
-    Close #f
-    Name logPath As logPath & ".removed-" & Format(Now, "yyyymmdd-hhnnss")
-    DoRemove = n & " placed notes removed." & IIf(bad <> "", vbLf & "Not removed:" & vbLf & bad, "")
+    Next
+    ' only retire the log when every listed note was removed, so a failed run can be fixed and re-run
+    If n = total And total > 0 Then Name logPath As logPath & ".removed-" & Format(Now, "yyyymmdd-hhnnss")
+    DoRemove = n & " of " & total & " placed notes removed." & IIf(bad <> "", vbLf & "Not removed (log kept):" & vbLf & bad, "")
 End Function
 
 ' ---------------------------------------------------------------- main
