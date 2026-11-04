@@ -77,7 +77,9 @@ Ask for the screenshots and answers below, and confirm anything you read from th
 - **Their own VBA project name.** Never a shared office project like `status`.
 
 **Text size.**
-- **Nothing to set: the standard size is built in** (`STANDARD_SIZE` in `make_macro.py`). The 8-line note "354 A" in `_Gen_Notes` is 15.001 ft tall in a 1"=10' section drawing model. The macro rebuilds those exact lines from the style in each file, measures them, and scales every note to match, so all files get the same size, with no note to copy and no run order. It still copies an existing note in the file when there is one (identical size).
+- **Every note is the text style itself** (engineer, 2026-11-04): `_Gen_Notes` at the style's own size (0.01 in the Text Editor), never a copy of a nearby note, because a nearby note can carry another style or a size override (3.1's "439 B" did: Style (none), 0.0106).
+- **How:** the macro makes each section model active while it builds that model's note, so the drawing's own annotation scale applies and nothing is rescaled. Building in the default model and scaling (the old way) gives the right look but a size override.
+- **Safety check, built in** (`STANDARD_SIZE` in `make_macro.py`): before each note, the 8-line note "354 A" built from the style in that model must measure 15.001 ft (1"=10'), within 3%. If not, it stops (dry run included) and says why.
 - **Only set `text_size.drawing_scale_ft_per_in`** (1"=10' → 10). At another scale the standard scales linearly; then have the engineer check the first placed note against an existing one before batching.
 - **Different text style or a non-DOT standard:** ask. Then either give `text_size.standard` (`{"height", "scale_ft_per_in", "lines"}` measured from a hand-placed note) or set `"use_standard": false` and choose:
   1. **Place one note by hand (recommended).** With Place Text, active level and style set as the standard, they place one note in any section model. MicroStation applies the annotation scale correctly. The macro then copies that note everywhere, and saves it as the size reference for the other files. Measure it as described above.
@@ -122,6 +124,7 @@ In chat, lead with:
 - **Placing:** each note goes into its section drawing model with `AddElement`, without opening the model.
 - **Grid:** it finds the grid from its widest horizontal line, and the scale from any ±N offset label pair.
 - **Duplicates:** it skips notes already on a section.
+- **Models:** it opens (activates) each section model while it builds that model's note, then goes back to the model it started in. That's slower than before (a few seconds per section).
 - **Level/color check:** it sets level, color and weight on the note and every line in it, reads them back, and stops (dry run included) if they didn't take.
 - **Output:** it writes a report per file, a summary per folder, and a log of placed element IDs for undo.
 

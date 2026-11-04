@@ -77,6 +77,12 @@ if TS.get("use_standard", True):
 else:
     STD_H, STD_LINES = 0, []
 SCRATCH = float(TS.get("scratch_height", 0) or 0)
+# Engineer, 2026-11-04: every note must be the text style itself (_Gen_Notes at its own 0.01 size),
+# never a copy of a nearby note (which can carry another style or a size override).
+COPY_EXISTING = bool(TS.get("copy_existing", False))
+# Build each note while its section model is active, so the style's annotation scale is that model's
+# and the text needs no scaling (the style's own size, no override). Checked against the standard note.
+STYLE_SIZE = bool(TS.get("style_size_in_section", True))
 if not STD_H and not SCRATCH:
     print("note: no standard size and no scratch height - files without a note to copy will need a reference "
           "note from an earlier file (_xsnotes_textsize.txt)")
@@ -127,8 +133,10 @@ bas = f'''Attribute VB_Name = "PlaceXSNotes"
 '   corner of the section grid (structure LT, left-aligned) or the top-right corner
 '   (structure RT, right edge on the grid edge).
 '   A second note in the same corner goes beside the first, toward the centerline.
-'   Text: copied from an existing note in this file when there is one; otherwise
-'   built from text style {nt["text_style"]} and sized to the standard note size.
+'   Text: built from text style {nt["text_style"]} at the style's own size, with
+'   each section model made active while its note is built (so the drawing's
+'   annotation scale applies, nothing is rescaled), and checked against the
+'   standard note size before anything is placed. Existing notes are never copied.
 '   Level {nt["level"]} (brought in from the level library if the file lacks it),
 '   color {COLOR}, weight {nt["weight"]}. The dry run checks the level and color took.
 '
@@ -166,6 +174,9 @@ Private Const STD_HEIGHT As Double = {STD_H:.4f}
 ' From-scratch sizing (only when there is no standard): drawn height of one capital-letter line.
 Private Const SCRATCH_HEIGHT As Double = {SCRATCH}
 Private Const STA_TOL As Double = 0.01         ' ft, model station match tolerance
+Private Const COPY_EXISTING As Boolean = {COPY_EXISTING}   ' copy an existing note's settings (off: always the style)
+Private Const STYLE_SIZE As Boolean = {STYLE_SIZE}      ' build in the section model at the style's own size
+Private Const SIZE_TOL As Double = 0.03         ' allowed difference from the standard note size (3%)
 
 Private mDry As Boolean
 Private mQuiet As Boolean   ' batch mode: no dialogs, everything goes to the report
@@ -186,6 +197,8 @@ Private mLevelImported As Boolean
 Private mLastModel As String         ' last model name read while searching the model list
 Private mStage As String            ' what the macro was doing, reported if an error stops it
 Private mLevel As Level
+Private mHome As ModelReference      ' model active when the macro started (made active again at the end)
+Private mSizeInfo As String          ' first size check, for the report header
 Private mPlaced As Long, mSkipped As Long, mMissing As Long
 
 ' ---------------------------------------------------------------- entry points
@@ -258,7 +271,8 @@ Private Sub RunAll(dry As Boolean)
     Set mLevel = FindOrImportLevel()
     If mLevel Is Nothing Then Fail "Level " & NOTE_LEVEL & " is not in this file and could not be brought in from the level library." & vbLf & _
         "Fix: open the XS file with the DOT workspace loaded, or create the level, then run again.": Exit Sub
-    Set mTemplate = FindTemplateNote()
+    Set mHome = ActiveModelReference: mSizeInfo = ""
+    If COPY_EXISTING Then Set mTemplate = FindTemplateNote() Else Set mTemplate = Nothing
     Set mStyle = Nothing: Set mOldStyle = Nothing: mScale = 1
     Rpt "File: " & ActiveDesignFile.FullName
     Rpt "Mode: " & IIf(dry, "DRY RUN (nothing placed)", "PLACE")
@@ -284,7 +298,11 @@ Private Sub RunAll(dry As Boolean)
     If Not mStyle Is Nothing Then
         mStage = "setting the active text style to " & NOTE_STYLE
         SetActiveStyle
-        If mProbeH > 0 Then
+        If STYLE_SIZE Then
+            mScale = 1
+            Rpt "Text: built from style " & NOTE_STYLE & " at its own size in each section model" & _
+                IIf(mProbeH > 0, " (checked against " & mProbeFrom & ")", " (no size check: no standard set)")
+        ElseIf mProbeH > 0 Then
             mStage = "measuring the text size against the reference note"
             mScale = ProbeScale()
             Rpt "Text: built from style " & NOTE_STYLE & ", scaled x" & Format(mScale, "0.0000") & _
@@ -299,6 +317,7 @@ Private Sub RunAll(dry As Boolean)
     End If
     Rpt String(70, "-")
     Notes
+    GoHome
     RestoreStyle
     RestoreLevel
     On Error GoTo 0
@@ -316,6 +335,7 @@ Private Sub RunAll(dry As Boolean)
     Exit Sub
 EH:
     Dim msg As String: msg = "Error " & Err.Number & ": " & Err.Description
+    GoHome
     RestoreStyle
     RestoreLevel
     If Not dry And mLog <> "" Then WriteFile OutPath("_log.txt"), mLog, True
@@ -351,14 +371,19 @@ Private Sub AddNote(id As String, secSta As Double, side As String, text As Stri
     ' build at the grid's top-left; it is moved into its corner once its size is known
     Dim xLeft As Double: xLeft = gridL
 
-    ' build the note from the template (same style/size/level as existing notes)
     Dim tn As TextNodeElement, i As Long
+    If STYLE_SIZE And mTemplate Is Nothing Then
+        mStage = id & ": opening " & m.Name & " to build the note at the style's size"
+        If ActiveModelReference.Name <> m.Name Then m.Activate
+        CheckStyleSize m, id
+    End If
+    ' build the note (active text style, or the copied note's settings)
     mStage = id & ": building the text for " & m.Name
     Set tn = CreateTextNodeElement1(mTemplate, Point3dFromXYZ(xLeft, yTop, 0), Matrix3dIdentity)   ' mTemplate Nothing = active settings (style set in RunAll)
     If tn.TextLinesCount <> 0 Then Err.Raise vbObjectError + 3, , id & ": the copied text template was not empty - stopping so no text is duplicated."
     For i = 0 To UBound(lines): tn.AddTextLine lines(i): Next
     Dim sizeNote As String
-    If mTemplate Is Nothing Then
+    If mTemplate Is Nothing And Not STYLE_SIZE Then
         tn.ScaleAll Point3dFromXYZ(xLeft, yTop, 0), mScale, mScale, 1#
         sizeNote = " [built from style, scaled x" & Format(mScale, "0.0000") & "]"
     End If
@@ -670,6 +695,36 @@ Private Function LoadStandard() As Boolean
     mProbeH = STD_HEIGHT: mProbeFrom = {vb_str(std["from"])}
     LoadStandard = True
 End Function
+
+' The section model is active: the note text built from the style here must match the standard note
+' (354 A = STD_HEIGHT tall). If it doesn't, stop rather than place a wrong-size note.
+Private Sub CheckStyleSize(m As ModelReference, id As String)
+    Dim tn As TextNodeElement, r As Range3d, v As Variant, ratio As Double
+    ' the active text style should carry over when the model changes; make sure it did
+    If ActiveSettings.TextStyle.Name <> NOTE_STYLE Then SetActiveStyle
+    If mProbeH <= 0 Then Exit Sub
+    Set tn = CreateTextNodeElement1(Nothing, Point3dFromXYZ(0, 0, 0), Matrix3dIdentity)
+    For Each v In mProbeLines: tn.AddTextLine CStr(v): Next
+    r = tn.Range
+    If r.High.Y - r.Low.Y <= 0 Then Err.Raise vbObjectError + 7, , id & ": could not measure text built from " & NOTE_STYLE & " in " & m.Name
+    ratio = (r.High.Y - r.Low.Y) / mProbeH
+    If mSizeInfo = "" Then
+        mSizeInfo = "Size check: the standard note built from " & NOTE_STYLE & " in " & m.Name & " is " & _
+            Format(r.High.Y - r.Low.Y, "0.000") & " tall (standard " & Format(mProbeH, "0.000") & ", x" & Format(ratio, "0.000") & ")"
+        Rpt mSizeInfo
+    End If
+    If Abs(ratio - 1) > SIZE_TOL Then Err.Raise vbObjectError + 10, , id & ": text built from " & NOTE_STYLE & " in " & m.Name & _
+        " comes out x" & Format(ratio, "0.000") & " the standard size (" & Format(r.High.Y - r.Low.Y, "0.000") & " vs " & Format(mProbeH, "0.000") & _
+        "). Nothing more was placed. Fix: check this model's annotation scale is the cross-section scale and the text style is " & NOTE_STYLE & ", then send this report."
+End Sub
+
+' Make the model that was active at the start active again.
+Private Sub GoHome()
+    On Error Resume Next
+    If Not mHome Is Nothing Then
+        If ActiveModelReference.Name <> mHome.Name Then mHome.Activate
+    End If
+End Sub
 
 ' Level, color and weight on the node and on every line in it.
 Private Sub SetSymbology(tn As TextNodeElement)
