@@ -57,6 +57,8 @@ Then read the output, which is written in the folder that holds the DGNs:
 
 **RemovePlacedNotes**, run by hand in a file, deletes exactly the notes the macro placed in that file. It reads them from `<file>_xsnotes_log.txt` and touches nothing else. After that you can change the settings and place them again.
 
+For several files at once, use Batch Process (default model only) with `xsnotes_batch_REMOVE.txt`. Each file adds a `REMOVE` line to `_xsnotes_SUMMARY.txt` saying how many notes it removed.
+
 ## If something stops
 
 The macro never skips a note silently. It stops and writes the step it was on, the last model it read and a suggested fix to the report and the summary. Send those lines (or a screenshot of the error box) and the macro gets fixed. Nothing is placed in a file after a stop, and notes placed before it are in the log.

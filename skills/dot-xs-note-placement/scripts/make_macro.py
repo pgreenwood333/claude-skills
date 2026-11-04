@@ -233,11 +233,31 @@ Public Sub PlaceNotes()
 End Sub
 
 Public Sub RemovePlacedNotes()
+    If Dir(OutPath("_log.txt")) = "" Then MsgBox "No log found at:" & vbLf & OutPath("_log.txt") & vbLf & "Nothing was removed.", vbExclamation: Exit Sub
+    If MsgBox("Delete every note this macro placed in this file (from " & OutPath("_log.txt") & ")?", vbOKCancel + vbExclamation) <> vbOK Then Exit Sub
+    MsgBox DoRemove(), vbInformation, "Place XS notes"
+End Sub
+
+' For MicroStation Batch Process (no dialogs). Key-in: vba run [{PROJ}]PlaceXSNotes.RemovePlacedNotesBatch
+' Removes only the notes listed in this file's _xsnotes_log.txt; the result goes to _xsnotes_SUMMARY.txt.
+Public Sub RemovePlacedNotesBatch()
+    If Not IsDefaultModel() Then Exit Sub
+    mQuiet = True
+    If Dir(OutPath("_log.txt")) = "" Then
+        WriteFile BatchSummaryPath(), Format(Now, "yyyy-mm-dd hh:nn") & vbTab & ActiveDesignFile.Name & vbTab & "REMOVE" & vbTab & _
+            "no log file, nothing removed (" & OutPath("_log.txt") & ")" & vbCrLf, True
+        Exit Sub
+    End If
+    Dim res As String: res = DoRemove()
+    WriteFile BatchSummaryPath(), Format(Now, "yyyy-mm-dd hh:nn") & vbTab & ActiveDesignFile.Name & vbTab & "REMOVE" & vbTab & _
+        Replace(Replace(res, vbCr, ""), vbLf, " ") & vbCrLf, True
+End Sub
+
+' Deletes the elements listed in the log (and nothing else), then renames the log so it can't run twice.
+Private Function DoRemove() As String
     Dim logPath As String, f As Integer, ln As String, parts() As String
     Dim m As ModelReference, el As Element, n As Long, bad As String
     logPath = OutPath("_log.txt")
-    If Dir(logPath) = "" Then MsgBox "No log found at:" & vbLf & logPath & vbLf & "Nothing was removed.", vbExclamation: Exit Sub
-    If MsgBox("Delete every note this macro placed in this file (from " & logPath & ")?", vbOKCancel + vbExclamation) <> vbOK Then Exit Sub
     f = FreeFile: Open logPath For Input As #f
     Do While Not EOF(f)
         Line Input #f, ln
@@ -261,8 +281,8 @@ Public Sub RemovePlacedNotes()
     Loop
     Close #f
     Name logPath As logPath & ".removed-" & Format(Now, "yyyymmdd-hhnnss")
-    MsgBox n & " placed notes removed." & IIf(bad <> "", vbLf & vbLf & "Not removed:" & vbLf & bad, ""), vbInformation
-End Sub
+    DoRemove = n & " placed notes removed." & IIf(bad <> "", vbLf & "Not removed:" & vbLf & bad, "")
+End Function
 
 ' ---------------------------------------------------------------- main
 Private Sub RunAll(dry As Boolean)
@@ -876,6 +896,7 @@ def write_crlf(path, text, enc="cp1252"):
 write_crlf(WORK / "PlaceXSNotes.bas", bas)
 write_crlf(WORK / "xsnotes_batch_DRYRUN.txt", f"vba run [{PROJ}]PlaceXSNotes.DryRunBatch\n")
 write_crlf(WORK / "xsnotes_batch_PLACE.txt", f"vba run [{PROJ}]PlaceXSNotes.PlaceNotesBatch\n")
+write_crlf(WORK / "xsnotes_batch_REMOVE.txt", f"vba run [{PROJ}]PlaceXSNotes.RemovePlacedNotesBatch\n")
 
 # run guide from the template
 from collections import Counter

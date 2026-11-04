@@ -120,7 +120,7 @@ In chat, lead with:
 - the run order: compile, dry run on `first_file`, read the report, place on `first_file` and check it, then the rest by hand or Batch Process
 
 **What the macro does:**
-- **Entry points:** `DryRun`, `PlaceNotes`, `RemovePlacedNotes`, plus dialog-free `DryRunBatch` / `PlaceNotesBatch` for Batch Process. The batch versions only work on the default model.
+- **Entry points:** `DryRun`, `PlaceNotes`, `RemovePlacedNotes`, plus dialog-free `DryRunBatch` / `PlaceNotesBatch` / `RemovePlacedNotesBatch` for Batch Process. The batch versions only work on the default model.
 - **Placing:** each note goes into its section drawing model with `AddElement`, without opening the model.
 - **Grid:** it finds the grid from its widest horizontal line, and the scale from any ±N offset label pair.
 - **Duplicates:** it skips notes already on a section.
