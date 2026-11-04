@@ -28,11 +28,13 @@ These all happened. Use them to set things up right the first time and to recogn
 - Drawing-model text is annotation-scaled. Text built from a style by VBA starts at a size set by the active model's annotation scale, and that differs per file: x0.20 in one file, x0.50 in another on 123456. So measure; don't compute from the style's height.
 - `TextStyle.Height` returns the style's nominal value (0.01), not the drawn size. Don't use it.
 - Per-line range height changes with the line count, because line spacing counts toward it. Compare **identical text**: build the reference note's exact lines from the style and compare total range heights. That's `ProbeScale`.
-- Best: copy an existing note in the same file (`CreateTextNodeElement1(template, ...)`). Next: the reference note saved by an earlier file (`_xsnotes_textsize.txt`). Last: from scratch (see SKILL.md).
+- **Standard size (built in since 2026-11-04):** "354 A" (8 lines, `_Gen_Notes`) = 15.001 ft tall in a 1"=10' drawing model. Probing every file against this fixed reference gave x0.2000 (3.1) and x0.5000 (3.2), and matched the copied notes in 2.1. The engineer confirmed the size is the same every time.
+- Before the standard: copy an existing note in the same file (`CreateTextNodeElement1(template, ...)`). Next: the reference note saved by an earlier file (`_xsnotes_textsize.txt`). Last: from scratch (see SKILL.md).
 - Notes built from a style are scaled geometry. If the drawing's annotation scale changes later, they won't follow it. Mention this when copy mode wasn't used.
 
 ## Placement
-- DOT convention on 123456: LT note's left edge at offset -115, RT note's left edge at +108, top line just under the top grid line, left-justified, no leaders, on a -140/+140 grid.
+- Existing notes on 123456 sat at -115 (LT) / +108 (RT). The engineer then asked (2026-11-04) for notes tucked into the corner: LT left edge on the grid's left edge, RT right edge on the right edge (1 ft gaps), color 15 instead of ByLevel.
+- Setting color/level on a text node in VBA may not reach its lines, so the macro sets every line too and reads them back before placing.
 - Two notes in one corner: stacking them didn't fit, so they go **side by side**, toward the centerline. The dry run has to include notes placed earlier in the same run, or it won't show the second note's position.
 - Some sections (508+30.75 on 123456) have no "-140"/"140" labels. Find the grid's edges from its widest horizontal line, and use any matching ±N offset label pair only for the scale.
 - Side comes from the profile sheet suffix (WK-30**LT**). The note text can name both sides (box culverts), and junction-box notes may name neither.

@@ -69,20 +69,18 @@ For every NEEDS DECISION note, ask the engineer: **place on the nearest section*
 ## Step 4: Settings: level, text, placement, size
 
 Ask for the screenshots and answers below, and confirm anything you read from them:
-- **Change Attributes on an existing XS note:** level, color, weight, class.
+- **Change Attributes on an existing XS note:** level, color, weight, class. DOT default: XS_P_DRAINAGE, **color 15** (the number, not ByLevel), weight 2.
 - **The Text Editor on an existing note:** text style and font. Also check the note's line format against the profile text.
 - **Place Named Boundary, Civil Cross Section, as used for the existing sections:** drawing seed, detail scale, group, left/right offsets, top/bottom clearance, vertical exaggeration. These go in the run guide for the sections the engineer cuts.
-- **Placement.** Look at an existing XS page with notes (render it from the index) and measure where notes sit, relative to the offset labels:
-  - Default (123456): LT note's left edge at -115, RT note's at +108, just under the top grid line, left-justified, no leaders, on a -140/+140 grid.
-  - Two notes in one corner go side by side, toward the centerline.
-  - Confirm this with the engineer.
+- **Placement (engineer's standard, 2026-11-04):** tucked into the grid corner. LT note: left edge `edge_gap` (1 ft) in from the grid's left edge; RT note: right edge 1 ft in from the right edge; top 1 ft under the top grid line. Left-justified, no leaders. Two notes in one corner go side by side, toward the centerline. Confirm it still applies.
 - **Which XS file already has a note** on that level and style. That file runs first (`first_file`), because the others size their text from it.
 - **Their own VBA project name.** Never a shared office project like `status`.
 
 **Text size.**
-- **Usually nothing to set.** The macro copies an existing note in the same file, or matches a reference note saved by an earlier file.
-- **No note on that level and style in any file:** ask the engineer to choose:
-  1. **Place one note by hand (recommended).** With Place Text, active level and style set as the standard, they place one note in any section model. MicroStation applies the annotation scale correctly. The macro then copies that note everywhere, and saves it as the size reference for the other files. Set `text_size.scratch_height` to 0.
+- **Nothing to set: the standard size is built in** (`STANDARD_SIZE` in `make_macro.py`). The 8-line note "354 A" in `_Gen_Notes` is 15.001 ft tall in a 1"=10' section drawing model. The macro rebuilds those exact lines from the style in each file, measures them, and scales every note to match, so all files get the same size, with no note to copy and no run order. It still copies an existing note in the file when there is one (identical size).
+- **Only set `text_size.drawing_scale_ft_per_in`** (1"=10' → 10). At another scale the standard scales linearly; then have the engineer check the first placed note against an existing one before batching.
+- **Different text style or a non-DOT standard:** ask. Then either give `text_size.standard` (`{"height", "scale_ft_per_in", "lines"}` measured from a hand-placed note) or set `"use_standard": false` and choose:
+  1. **Place one note by hand (recommended).** With Place Text, active level and style set as the standard, they place one note in any section model. MicroStation applies the annotation scale correctly. The macro then copies that note everywhere, and saves it as the size reference for the other files. Measure it as described above.
   2. **Fully from scratch.** Ask for the plotted text height for notes (inches on the sheet) and the drawing scale (e.g. 1"=10'). Set `scratch_height` = plotted height × feet per inch: 0.10" at 1"=10' gives 1.0. Never assume the standard height; ask.
      - **How the macro sizes it:** it builds a capital-letter line from the style, measures it, and scales the note so that line is `scratch_height` tall in the drawing model.
      - **Check it before batching:** after placing on the first file, have the engineer use Element Information on one note and compare the text height with the plotted height × scale. This path is less proven than copying a note. Say so.
@@ -94,10 +92,10 @@ Write `<work>/macro_settings.json`:
 {
   "job": "123456", "vba_project": "XSNotes", "group_prefix": "MLUS51 - ",
   "first_file": "XS-US51-2.1-35850 to 39200.dgn",
-  "note_text": {"level": "XS_P_DRAINAGE", "text_style": "_Gen_Notes", "weight": 2, "color": "ByLevel", "class": "Primary"},
+  "note_text": {"level": "XS_P_DRAINAGE", "text_style": "_Gen_Notes", "weight": 2, "color": 15, "class": "Primary"},
   "grid": {"left_offset": -140, "right_offset": 140},
-  "placement": {"lt_corner_offset": -115, "rt_corner_offset": 108, "top_gap": 1, "side_gap": 3},
-  "text_size": {"scratch_height": 0},
+  "placement": {"edge_gap": 1, "top_gap": 1, "side_gap": 3},
+  "text_size": {"drawing_scale_ft_per_in": 10},
   "new_sections": {"drawing_seed": "DOT Cross Section Sheet - 10 Scale", "detail_scale": "1\"=10'", "group": "MLUS51",
                    "left_offset": -140, "right_offset": 140, "top_clearance": 10, "bottom_clearance": 5,
                    "vertical_exaggeration": 1, "elevation_datum_spacing": 10, "create": "drawing model only, no sheet model"}
@@ -124,6 +122,7 @@ In chat, lead with:
 - **Placing:** each note goes into its section drawing model with `AddElement`, without opening the model.
 - **Grid:** it finds the grid from its widest horizontal line, and the scale from any ±N offset label pair.
 - **Duplicates:** it skips notes already on a section.
+- **Level/color check:** it sets level, color and weight on the note and every line in it, reads them back, and stops (dry run included) if they didn't take.
 - **Output:** it writes a report per file, a summary per folder, and a log of placed element IDs for undo.
 
 ## Step 6: Read the results with the engineer

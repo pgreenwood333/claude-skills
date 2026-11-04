@@ -6,7 +6,7 @@ The macro places **{{COUNT}} notes**:
 |---|---|
 {{FILE_TABLE}}
 
-Notes go on level **{{LEVEL}}**, text style **{{STYLE}}**, weight {{WEIGHT}}, color ByLevel. Each note sits in the top-left corner of the section grid when the structure is LT, and the top-right corner when it's RT. A second note in the same corner goes beside the first, toward the centerline.
+Notes go on level **{{LEVEL}}**, text style **{{STYLE}}**, weight {{WEIGHT}}, color {{COLOR}}, at the standard note size. Each note is tucked into the top-left corner of the section grid when the structure is LT (left edge on the grid edge), and the top-right corner when it's RT (right edge on the grid edge). A second note in the same corner goes beside the first, toward the centerline.
 
 ## 1. Cut the new sections by hand (if any are listed)
 

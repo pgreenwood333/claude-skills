@@ -29,11 +29,23 @@ REQUIRED = {
     "note_text.level": "level for the notes",
     "note_text.text_style": "text style for the notes",
     "note_text.weight": "line weight",
+    "note_text.color": "color number (e.g. 15) or \"ByLevel\"",
     "grid.left_offset": "section left offset (ft)", "grid.right_offset": "section right offset (ft)",
-    "placement.lt_corner_offset": "left edge of LT notes (offset, ft)",
-    "placement.rt_corner_offset": "left edge of RT notes (offset, ft)",
+    "placement.edge_gap": "ft in from the grid's left edge (LT notes) or right edge (RT notes)",
     "placement.top_gap": "ft below the top grid line", "placement.side_gap": "ft between side-by-side notes",
-    "text_size.scratch_height": "drawn text height for from-scratch sizing, or 0 to require a note to copy",
+    "text_size.drawing_scale_ft_per_in": "drawing scale of the section models, ft per inch (1\"=10' -> 10)",
+}
+
+# Standard note size (engineer, 2026-11-04: "it's going to be the same every time").
+# Measured on job 123456: the 8-line note "354 A" (text style _Gen_Notes, level XS_P_DRAINAGE,
+# sized by OpenRoads itself) is 15.001 ft tall in a 1"=10' cross-section drawing model.
+# The macro rebuilds these exact lines from the text style and scales to match, so every file
+# gets the same size with no note to copy and no run order. Other drawing scales scale linearly.
+STANDARD_SIZE = {
+    "height": 15.001, "scale_ft_per_in": 10,
+    "lines": ["354 A", "STA. 354+30.00", "SS-3 REQ'D LT", "TOP = 346.08'", "INV. = 343.00'",
+              "H = 3.79'", "OPENINGS: 1 @ 18\"", "68' - 18\" RCP REQ'D."],
+    "from": "DOT standard note size (_Gen_Notes, measured on job 123456)",
 }
 for key, what in REQUIRED.items():
     node = settings
@@ -56,6 +68,27 @@ G, P, TS = settings["grid"], settings["placement"], settings["text_size"]
 GROUP = settings["group_prefix"]
 PROJ = settings["vba_project"]
 JOB = settings["job"]
+
+# text size: the built-in standard unless the settings give another reference or turn it off
+std = dict(STANDARD_SIZE, **(TS.get("standard") or {}))
+if TS.get("use_standard", True):
+    STD_H = std["height"] * float(TS["drawing_scale_ft_per_in"]) / float(std["scale_ft_per_in"])
+    STD_LINES = std["lines"]
+else:
+    STD_H, STD_LINES = 0, []
+SCRATCH = float(TS.get("scratch_height", 0) or 0)
+if not STD_H and not SCRATCH:
+    print("note: no standard size and no scratch height - files without a note to copy will need a reference "
+          "note from an earlier file (_xsnotes_textsize.txt)")
+COLOR = settings["note_text"]["color"]
+if isinstance(COLOR, str) and COLOR.strip().lower() == "bylevel":
+    COLOR_VB = -1
+elif isinstance(COLOR, int) or (isinstance(COLOR, str) and COLOR.strip().isdigit()):
+    COLOR_VB = int(COLOR)
+    if not 0 <= COLOR_VB <= 255:
+        stop(f"note_text.color {COLOR} is out of range", "use a color number 0-255 or \"ByLevel\"")
+else:
+    stop(f"note_text.color {COLOR!r} is not a color number or ByLevel", "ask the user (Change Attributes shows it)")
 
 
 def sta_ft(label):
@@ -81,6 +114,7 @@ for n in sorted(notes, key=lambda n: (target_sta(n), n["side"], n["id"])):
     rows.append("\n".join(body) + f'\n    AddNote "{n["id"]}", {target_sta(n):.4f}, "{n["side"]}", t')
 
 nt = settings["note_text"]
+STD_ADD = "\n".join(f"    mProbeLines.Add {vb_str(l)}" for l in STD_LINES) or "    ' (no standard)"
 bas = f'''Attribute VB_Name = "PlaceXSNotes"
 ' ============================================================================
 ' Job {JOB} - place missing cross-section notes
@@ -89,13 +123,14 @@ bas = f'''Attribute VB_Name = "PlaceXSNotes"
 '
 ' WHAT IT DOES
 '   For each note whose cross-section drawing model ("{GROUP}<station>") exists
-'   in the OPEN file, it places the note as one text node in the top-left corner
-'   of the section grid (structure LT) or top-right corner (structure RT).
+'   in the OPEN file, it places the note as one text node tucked into the top-left
+'   corner of the section grid (structure LT, left-aligned) or the top-right corner
+'   (structure RT, right edge on the grid edge).
 '   A second note in the same corner goes beside the first, toward the centerline.
 '   Text: copied from an existing note in this file when there is one; otherwise
-'   built from text style {nt["text_style"]} and sized to match a reference note saved
-'   from another XS file, or (no note anywhere) to the height in the settings.
-'   Level {nt["level"]}; brought in from the level library if the file lacks it.
+'   built from text style {nt["text_style"]} and sized to the standard note size.
+'   Level {nt["level"]} (brought in from the level library if the file lacks it),
+'   color {COLOR}, weight {nt["weight"]}. The dry run checks the level and color took.
 '
 ' WHAT IT NEVER DOES
 '   - It does not create, cut or change cross sections / named boundaries.
@@ -119,15 +154,17 @@ Private Const GROUP_PREFIX As String = "{GROUP}"
 Private Const NOTE_LEVEL As String = "{nt["level"]}"
 Private Const NOTE_STYLE As String = "{nt["text_style"]}"
 Private Const NOTE_WEIGHT As Long = {nt["weight"]}
+Private Const NOTE_COLOR As Long = {COLOR_VB}          ' color number; -1 = ByLevel (left as is)
 Private Const GRID_LEFT As Double = {G["left_offset"]}      ' section left offset (ft)
 Private Const GRID_RIGHT As Double = {G["right_offset"]}      ' section right offset (ft)
-Private Const LT_CORNER_OFFSET As Double = {P["lt_corner_offset"]}  ' left edge of LT notes
-Private Const RT_CORNER_OFFSET As Double = {P["rt_corner_offset"]}   ' left edge of RT notes
+Private Const EDGE_GAP As Double = {P["edge_gap"]}          ' ft in from the grid's left edge (LT) / right edge (RT)
 Private Const TOP_GAP As Double = {P["top_gap"]}           ' ft below the top grid line
 Private Const SIDE_GAP As Double = {P["side_gap"]}          ' ft between two notes side by side in one corner
-' From-scratch sizing (no note to copy in any file): drawn height of one capital-letter line in
-' drawing-model units = plotted text height (in) x drawing scale (ft per in). 0 = not allowed.
-Private Const SCRATCH_HEIGHT As Double = {TS["scratch_height"]}
+' Standard note size: the note in LoadStandard, built from the text style, is STD_HEIGHT tall
+' in a section drawing model. 0 = no standard (use a saved reference note or SCRATCH_HEIGHT).
+Private Const STD_HEIGHT As Double = {STD_H:.4f}
+' From-scratch sizing (only when there is no standard): drawn height of one capital-letter line.
+Private Const SCRATCH_HEIGHT As Double = {SCRATCH}
 Private Const STA_TOL As Double = 0.01         ' ft, model station match tolerance
 
 Private mDry As Boolean
@@ -234,9 +271,13 @@ Private Sub RunAll(dry As Boolean)
         Set mStyle = ActiveDesignFile.TextStyles.Find(NOTE_STYLE)
         If mStyle Is Nothing Then Fail "Text style " & NOTE_STYLE & " is not available in this file." & vbLf & _
             "Fix: open the XS file with the DOT workspace loaded." & vbLf & vbLf & mTemplateDiag: Exit Sub
-        If Not LoadProbe() And SCRATCH_HEIGHT <= 0 Then Fail "No existing note in this file to copy, no saved reference note, and no from-scratch text height set." & vbLf & _
+        If LoadStandard() Then
+            ' standard note size: same size in every file, no run order
+        ElseIf Not LoadProbe() And SCRATCH_HEIGHT <= 0 Then
+            Fail "No existing note in this file to copy, no standard size, no saved reference note, and no from-scratch text height set." & vbLf & _
             "Fix: run the macro first on an XS file that has notes (it saves a reference note to " & SizeFilePath() & _
             "), or place one note by hand on any section here, or set the from-scratch text height." & vbLf & vbLf & mTemplateDiag: Exit Sub
+        End If
     End If
 
     On Error GoTo EH
@@ -307,13 +348,8 @@ Private Sub AddNote(id As String, secSta As Double, side As String, text As Stri
         Err.Raise vbObjectError + 1, , id & ": can't locate the section grid in " & m.Name & " (" & msg & ")." & _
             " Fix: check the section has its grid/annotation, or place this note by hand."
     End If
-    ' corners measured from the grid edges, same spots as existing notes on a -140/+140 grid
-    Dim xLeft As Double
-    If side = "LT" Then
-        xLeft = gridL + (LT_CORNER_OFFSET - GRID_LEFT) * k
-    Else
-        xLeft = gridR - (GRID_RIGHT - RT_CORNER_OFFSET) * k
-    End If
+    ' build at the grid's top-left; it is moved into its corner once its size is known
+    Dim xLeft As Double: xLeft = gridL
 
     ' build the note from the template (same style/size/level as existing notes)
     Dim tn As TextNodeElement, i As Long
@@ -326,13 +362,16 @@ Private Sub AddNote(id As String, secSta As Double, side As String, text As Stri
         tn.ScaleAll Point3dFromXYZ(xLeft, yTop, 0), mScale, mScale, 1#
         sizeNote = " [built from style, scaled x" & Format(mScale, "0.0000") & "]"
     End If
-    tn.Level = mLevel
-    tn.LineWeight = NOTE_WEIGHT
+    mStage = id & ": setting level/color/weight"
+    SetSymbology tn
+    CheckSymbology tn, id
 
-    ' put its top-left corner just under the top grid line, below any note already in that corner
+    ' tuck it into the corner: LT = left edge EDGE_GAP in from the grid's left edge,
+    ' RT = right edge EDGE_GAP in from the grid's right edge; top TOP_GAP under the top grid line
     Dim top As Double, r As Range3d, h As Double, w As Double
     mStage = id & ": finding free space in the corner of " & m.Name
     r = tn.Range: h = r.High.Y - r.Low.Y: w = r.High.X - r.Low.X
+    If side = "LT" Then xLeft = gridL + EDGE_GAP * k Else xLeft = gridR - EDGE_GAP * k - w
     top = yTop - TOP_GAP * k
     Dim xStart As Double: xStart = xLeft
     xLeft = BesideNotesInCorner(m, side, xLeft, w, top, h, k)
@@ -623,6 +662,44 @@ Private Function LoadProbe() As Boolean
     LoadProbe = (mProbeH > 0 And mProbeLines.Count > 0)
 End Function
 
+' The standard note size, built in (same in every file). False if the job turned it off.
+Private Function LoadStandard() As Boolean
+    Set mProbeLines = New Collection: mProbeH = 0: mProbeFrom = ""
+    If STD_HEIGHT <= 0 Then Exit Function
+{STD_ADD}
+    mProbeH = STD_HEIGHT: mProbeFrom = {vb_str(std["from"])}
+    LoadStandard = True
+End Function
+
+' Level, color and weight on the node and on every line in it.
+Private Sub SetSymbology(tn As TextNodeElement)
+    Dim se As ElementEnumerator
+    tn.Level = mLevel
+    tn.LineWeight = NOTE_WEIGHT
+    If NOTE_COLOR >= 0 Then tn.Color = NOTE_COLOR
+    Set se = tn.GetSubElements
+    Do While se.MoveNext
+        se.Current.Level = mLevel
+        se.Current.LineWeight = NOTE_WEIGHT
+        If NOTE_COLOR >= 0 Then se.Current.Color = NOTE_COLOR
+    Loop
+End Sub
+
+' Read the lines back; stop (dry run included) if the level or color did not take.
+Private Sub CheckSymbology(tn As TextNodeElement, id As String)
+    Dim se As ElementEnumerator, bad As String
+    If tn.Level.Name <> NOTE_LEVEL Then bad = "level " & tn.Level.Name
+    If NOTE_COLOR >= 0 And tn.Color <> NOTE_COLOR Then bad = bad & " color " & tn.Color
+    Set se = tn.GetSubElements
+    Do While se.MoveNext
+        If se.Current.Level.Name <> NOTE_LEVEL Then bad = bad & " line level " & se.Current.Level.Name
+        If NOTE_COLOR >= 0 And se.Current.Color <> NOTE_COLOR Then bad = bad & " line color " & se.Current.Color
+    Loop
+    If bad <> "" Then Err.Raise vbObjectError + 9, , id & ": the note did not take level " & NOTE_LEVEL & _
+        IIf(NOTE_COLOR >= 0, " / color " & NOTE_COLOR, "") & " (got" & bad & "). Nothing more was placed." & _
+        " Fix: send this report; meanwhile notes can be placed with color ByLevel."
+End Sub
+
 ' Build the reference note's exact text from the style (not added to any model) and compare heights.
 Private Function ProbeScale() As Double
     Dim tn As TextNodeElement, r As Range3d, v As Variant
@@ -757,7 +834,7 @@ fill = {
     "FILE_TABLE": "\n".join(f"| {f} | {c} |" for f, c in sorted(per_file.items())),
     "CUT_LIST": "\n".join(f"- {s}  ({f})" for f, s in cuts) or "- none",
     "CUT_SETTINGS": "\n".join(f"- {k.replace('_', ' ')}: {v}" for k, v in ns.items() if k != "stations") or "- (same settings as the existing sections)",
-    "LEVEL": nt["level"], "STYLE": nt["text_style"], "WEIGHT": str(nt["weight"]),
+    "LEVEL": nt["level"], "STYLE": nt["text_style"], "WEIGHT": str(nt["weight"]), "COLOR": str(COLOR),
     "FIRST_FILE": settings.get("first_file") or ref_file,
 }
 for k, v in fill.items():
