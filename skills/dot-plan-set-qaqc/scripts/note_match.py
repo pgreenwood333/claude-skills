@@ -1,13 +1,18 @@
 #!/usr/bin/env python3
 """Note match: plan note vs profile note on each WK sheet, and profile note vs cross-section (XS) note.
 
-  note_match.py <plans.pdf> <out_dir> [--index <index_dir>] [--wk-pages 1-20] [--xs-pages 40-60]
+  note_match.py <plans.pdf> <out_dir> [--index <index_dir>] [--wk-pages 1-20] [--xs-pages 40-60] [--profile-only]
 
 Rules (from the engineer):
   * Profile note (WK, profile view) and the XS note for the same structure must match EXACTLY, line for line,
     stations and elevations included.
   * Plan note (WK, plan view above the profile) shows the structure label ("[465 B]") and the pipe length, size
     and material ("156' - 18\" RCP REQ'D"). These must agree with the profile note's structure ID and pipe line.
+  * Removal-only drainage notes (REMOVE / ABANDON / EXIST. PIPE / FLOWABLE FILL with no proposed structure or pipe)
+    belong on the plan and profile only, never the cross section: kind "removal", never flagged as one-sided.
+    A note that combines a proposed structure with a removal is a normal drainage note.
+--profile-only: no cross sections yet; reads the WK sheets only and lists every profile note with its kind
+(profile_notes in the output; "drainage" and "driveway" are the ones that go on the cross sections).
 Pages: with --index, WK pages are prefix WK and XS pages are sheets numbered 9000-9999 or prefixed XS/X;
 --wk-pages / --xs-pages override. Writes <out>/note_match.json: findings (findings-schema format, task
 "notematch") plus every comparison made, so the agent and orchestrator can verify each one.
@@ -41,7 +46,12 @@ def sid_of(line):
 
 DRIVE_NOTE = re.compile(r"\bDRIVE REQ", re.I)   # a driveway note, not a street name ("TRUMAN DRIVE")
 DRAIN_WORDS = re.compile(r"PIPE|RCP|RCAP|CULV|BOX|INLET|JUNCTION|\bJB\b|HEADWALL|FLOWABLE|EXIST|INV\.|SS-\d", re.I)
-KIND_LABEL = {"driveway": "Driveway", "drainage": "Drainage", "other": "Note"}
+KIND_LABEL = {"driveway": "Driveway", "drainage": "Drainage", "removal": "Removal", "other": "Note"}
+# removal-only drainage notes: plan + profile only, never on the cross section (engineer's rule)
+REMOVES = re.compile(r"EXIST\.?\s*PIPE|FLOWABLE|\bREMOVE|\bABANDON", re.I)
+PROPOSED = re.compile(r"SS-\d|JB-|MI-\d|FE-\d|BC-\d|PC-\d|\bBOX\b|DRIVE|INLET|HEADWALL|"
+                      r"(RCP|RCAP|ALT\.? PIPE|PIPE) ?REQ'D", re.I)
+NOT_ON_XS = ("other", "removal")   # kinds that are never flagged as missing from one view
 DRIVE_PIPE = re.compile(r"\d+(?:\.\d+)?'\s*-?\s*(?:\d+|XX)\"")   # 40'-XX" ALT. PIPE / 40' - 18" RCP
 STA_TOL = 2.0   # ft: a driveway note on the XS within this of the profile station (and same side) is the same drive
 XS_PLACE_TOL = 25.0   # ft: a note is often placed on the nearest section (495+00 note on the 494+95 section)
@@ -52,6 +62,8 @@ def kind_of(note):
     text = " ".join(note["lines"])
     if DRIVE_NOTE.search(text):
         return "driveway"
+    if REMOVES.search(text) and not PROPOSED.search(text):
+        return "removal"
     return "drainage" if note.get("sid") or DRAIN_WORDS.search(text) else "other"
 
 
@@ -226,6 +238,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("pdf"); ap.add_argument("out"); ap.add_argument("--index")
     ap.add_argument("--wk-pages"); ap.add_argument("--xs-pages")
+    ap.add_argument("--profile-only", action="store_true", help="no cross sections: list the profile notes only")
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
     sheet = {}
@@ -238,10 +251,12 @@ def main():
                 wk.append(p["pdf_page"])
             if not a.xs_pages and (re.fullmatch(r"9\d{3}", no) or p["prefix"].upper() in ("XS", "X")):
                 xs.append(p["pdf_page"])
+    if a.profile_only:
+        xs = []   # cross sections are not compared in this mode
     F, checks = [], []
     # never compare against nothing: no WK or no XS pages means a missing file or a mistyped index, not "no problems"
     for name, pg, how in (("WK plan/profile", wk, "--wk-pages"), ("cross-section (9000-series / XS)", xs, "--xs-pages")):
-        if not pg:
+        if not pg and not (a.profile_only and how == "--xs-pages"):
             print(f"\nSTOP: note match found no {name} sheets in {a.pdf}.\nFIX:  give the PDF that contains them (plans "
                   f"and cross sections combined), or pass {how} with their page numbers. Ask the engineer if unsure.",
                   file=sys.stderr)
@@ -439,7 +454,7 @@ def main():
             if not cands:
                 checks.append(dict(kind="xs", id=sid, page=n["page"], note_kind=kind, result="no xs note"))
                 n["xs_txt"] = "MISSING"
-                if kind == "other":   # silt basins, barrier, bridge notes: not part of the drainage/driveway rule
+                if kind in NOT_ON_XS:   # silt basins, barrier, bridge, removal-only: not part of the XS rule
                     continue
                 add("medium", [sh], [n["page"]],
                     f"{KIND_LABEL[kind]} {sid}: shown in the profile on {sh} but not on any cross section",
@@ -496,7 +511,7 @@ def main():
             if not x["lines"] or not XS_NOTE.search(" ".join(x["lines"])):
                 continue
             kind = kind_of(x)
-            if kind == "other":   # only drainage and driveway notes must appear on both views
+            if kind in NOT_ON_XS:   # only proposed drainage and driveway notes must appear on both views
                 continue
             if x["sid"]:
                 matched = x["sid"] in prof_sids
@@ -573,6 +588,7 @@ def main():
             f["note"] = note_rec(n)
     for n in prof:
         n.pop("plan_txt", None)
+        n["sheet"], n["kind"] = sh_of(n["page"]), kind_of(n)   # for callers that use the profile notes directly
     summary["eye_checks"] = len(E)
     summary["xs_notes_read"] = len(xsn) if xs else 0
     json.dump(dict(summary=summary, findings=F, eye_checks=E, checks=checks, profile_notes=prof,
