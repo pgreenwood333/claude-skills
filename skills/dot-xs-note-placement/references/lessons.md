@@ -1,46 +1,41 @@
-# Lessons from the first job (123456, US 51, Nov 2026)
+# XS note placement lessons (approved by the engineer)
 
-These all happened. Use them to set things up right the first time and to recognize errors when the engineer sends a report or a screenshot.
+Read your section before each stage of a job. These override the defaults in SKILL.md. Each is a rule from a real
+mistake or an engineer's correction, dated. Add new ones only with `learn.py accept` after the engineer agrees;
+at most 12 per section (merge old ones when a section is full).
 
-## Files and formats
-- OpenRoads V8/CONNECT DGNs are OLE files with zlib-compressed streams. From the Mac you can read **model names** (`match_sections.py`), but **not the text inside models**: element data is packed. Don't try to decode it. That's reverse-engineering Bentley's format, and the engineer has ruled it out.
-- No free tool writes a V8 DGN or a `.mvba` VBA project. Never hand-build either one. Deliver a `.bas` the engineer imports.
-- A DGN can be newer than the PDF set. On 123456 the DGNs already had sections cut at most of the stations the PDF was missing. Always match against the DGN model names, not the PDF.
-- Files sent from Drive come zipped. A file over ~100 MB can't come through the Drive connector, which returns files inline. Ask the engineer to share it "anyone with the link", then `curl -L "https://drive.usercontent.google.com/download?id=<ID>&export=download&confirm=t"` into its own new folder on the external drive. Check the size and that `file` reports a zip.
+## notes
+- Only proposed drainage and driveway notes go on the cross sections. Removal-only notes (REMOVE / ABANDON / EXIST. PIPE / FLOWABLE FILL with no proposed structure) are plan and profile only; a note that combines a proposed structure with a removal does go on the XS. The QA/QC note match applies this rule; don't re-decide it. (2026-11-03)
+- A fresh note match (no QA/QC review) flags some notes as missing that are on the XS but unreadable to the script (6 on 123456: 372+65, 372+75, 389+00, 391+20, 430+38 among them). Check every "MISSING on cross section" flag on the XS sheets before placing it. (2026-11-04)
+- Take each note's side from its profile sheet suffix (WK-30LT). The note text can name both sides (box culverts) or neither (junction boxes). (2026-11-03)
+- Copy the note text line for line from the profile, exactly as printed; never retype or reformat it. (2026-11-03)
 
-## Cross sections
-- Dynamic cross-section drawing models are named `<named boundary group> - <station>`, e.g. `MLUS51 - 471+91.4300`. Sheet models add ` [Sheet]`.
-- Cutting new sections from VBA isn't supported: civil named-boundary creation is only in Bentley's .NET SDK, and its docs are thin. The engineer chose to cut new sections by hand rather than risk the file. Never script it. List the stations and the Place Named Boundary settings, drawing model only.
-- Bentley's MicroStation MCP server (early access, Windows only, tied to Bentley Copilot) can't do civil work either. Don't suggest it for this. An npm package called `openroads-mcp` doesn't exist, and OpenROAD-MCP is a chip-design tool.
+## sections
+- Match notes against the DGN drawing-model names (`<group> - <station>`), not the PDF: the DGNs can be newer and already have sections the PDF lacks. (2026-11-03)
+- A note within 0.5 ft of a section is the same structure (the note rounds the station). Anything farther is the engineer's call: nearest section, cut new, or skip. On 123456 they took nearest for gaps up to ~3 ft and cut new sections for 4 to 30 ft. (2026-11-03)
+- Never script cutting cross sections or named boundaries, and never write a DGN or .mvba. The engineer cuts new sections by hand, drawing model only, no sheet model. (2026-11-03)
+- Some sections have no -140/140 offset labels (508+30.75 on 123456). Find the grid edges from its widest horizontal line; use any matching offset-label pair only for the scale. (2026-11-03)
 
-## VBA gotchas (all hit on 123456)
-- **The module landed in the wrong project.** The engineer had a shared `status.mvba` open, and the import went into it. Batch Process then ran `[XSNotes]...` and quietly did nothing. Always say: click your own project in the Project tree, import, and check the module is under it.
-- **The engineer couldn't save the project as `.mvba`.** Projects are created in the VBA Manager with **New**. Editor > Save writes into that file, and Export only writes `.bas` files.
-- **`TextNodeElement` has no `TextStyle`.** Read the style from its first `TextElement` sub-element.
-- **Setting a text style uses plain `=`, not `Set`** (`ActiveSettings.TextStyle = style`). This matches the office's working `status` macro.
-- **Pass array or Variant items into helpers ByVal**, or the compile fails with "ByRef argument type mismatch".
-- **`ActiveSettings.TextStyle = style` fails** with -2147218305 ("Unknown error") when the style only exists in the library. The fallback is the key-in `TEXTSTYLE ACTIVE <name>`. For a library-only level, use `ACTIVE LEVEL <name>`.
-- **Batch Process runs the command file once per model** when a file is set to "All Models": 243 runs, 34 minutes. The batch subs only work on the default model. Tell the engineer to set each file to the default model.
-- **Batch runs show no dialogs.** All output goes to `<file>_xsnotes_report.txt` and `_xsnotes_SUMMARY.txt` next to the DGNs. A missing summary line means the macro never ran for that file.
-- Have the engineer run **Debug > Compile** after every import. It catches every compile error at once, before a run.
+## settings
+- Notes are level XS_P_DRAINAGE, color 15 (the number, not ByLevel), weight 2, text style _Gen_Notes at its own size (0.01 in the Text Editor). (2026-11-04)
+- Never copy a nearby note to get text settings: in 3.1 the macro copied "439 B" (Style (none), 0.0106) into 42 notes. Always build from the text style. (2026-11-04)
+- Build each note with its section model active. VBA text takes the active model's annotation scale; in Batch Process that's the default model (x0.2 / x0.5 on 123456), which forces a size override. Active section = x1.000, no override. (2026-11-04)
+- The standard note "354 A" (8 lines, _Gen_Notes) is 15.001 ft tall at 1"=10'. The macro checks it in every section before placing and stops if it is off by more than 3%. (2026-11-04)
+- Place notes tucked into the grid corner: LT left edge 1 ft in from the left grid edge, RT right edge 1 ft in from the right edge, top 1 ft under the top grid line. (2026-11-04)
+- Two notes in one corner go side by side, toward the centerline; stacked notes don't fit. (2026-11-03)
 
-## Text size
-- Drawing-model text is annotation-scaled. Text built from a style by VBA starts at a size set by the active model's annotation scale, and that differs per file: x0.20 in one file, x0.50 in another on 123456. So measure; don't compute from the style's height.
-- `TextStyle.Height` returns the style's nominal value (0.01), not the drawn size. Don't use it.
-- Per-line range height changes with the line count, because line spacing counts toward it. Compare **identical text**: build the reference note's exact lines from the style and compare total range heights. That's `ProbeScale`.
-- **Never copy a nearby note (2026-11-04).** In 3.1 the macro copied "439 B" (level XS_DRAINAGE_TX, Style (none), 0.0106), and all 42 notes came out that way. Notes are now always built from `_Gen_Notes` with the section model active, so they show the style and its 0.01 size.
-- **Why the old probe factors were x0.2 / x0.5:** VBA text takes the ACTIVE model's annotation scale. In batch that's the default model (1"=50' / 1"=20'), not the 1"=10' section. Activating the section model first removes the scaling. Confirmed 2026-11-04: with the section model active, the standard note measured 15.000 vs 15.001 (x1.000) in all three files.
-- **Standard size (built in since 2026-11-04):** "354 A" (8 lines, `_Gen_Notes`) = 15.001 ft tall in a 1"=10' drawing model. Probing every file against this fixed reference gave x0.2000 (3.1) and x0.5000 (3.2), and matched the copied notes in 2.1. The engineer confirmed the size is the same every time.
-- Before the standard: copy an existing note in the same file (`CreateTextNodeElement1(template, ...)`). Next: the reference note saved by an earlier file (`_xsnotes_textsize.txt`). Last: from scratch (see SKILL.md).
-- Notes built from a style are scaled geometry. If the drawing's annotation scale changes later, they won't follow it. Mention this when copy mode wasn't used.
+## macro
+- Read the text style from a text node's first TextElement sub-element (TextNodeElement has no TextStyle). Set a style with plain `=`, not `Set`. (2026-11-03)
+- `ActiveSettings.TextStyle = style` fails (-2147218305) when the style is only in the library; fall back to the key-in `TEXTSTYLE ACTIVE <name>` (and `ACTIVE LEVEL <name>` for a level). (2026-11-03)
+- Pass array or Variant items into helpers ByVal, or the compile fails with "ByRef argument type mismatch". (2026-11-03)
+- Setting level/color on a text node may not reach its lines: set every line and read them back before placing. (2026-11-04)
+- Batch subs must only act on the default model: with "All Models" Batch Process runs the macro once per model (243 runs, 34 minutes on 123456). (2026-11-03)
+- The log is written with LF line ends and VBA `Line Input` only splits on CR: read logs whole and split on LF. Only retire a log when every listed note was removed. (2026-11-04)
+- Batch runs show no dialogs: every result and every stop goes to the report and `_xsnotes_SUMMARY.txt`. A missing summary line means the macro never ran for that file. (2026-11-03)
 
-## Placement
-- Existing notes on 123456 sat at -115 (LT) / +108 (RT). The engineer then asked (2026-11-04) for notes tucked into the corner: LT left edge on the grid's left edge, RT right edge on the right edge (1 ft gaps), color 15 instead of ByLevel.
-- Setting color/level on a text node in VBA may not reach its lines, so the macro sets every line too and reads them back before placing.
-- Two notes in one corner: stacking them didn't fit, so they go **side by side**, toward the centerline. The dry run has to include notes placed earlier in the same run, or it won't show the second note's position.
-- Some sections (508+30.75 on 123456) have no "-140"/"140" labels. Find the grid's edges from its widest horizontal line, and use any matching ±N offset label pair only for the scale.
-- Side comes from the profile sheet suffix (WK-30**LT**). The note text can name both sides (box culverts), and junction-box notes may name neither.
-- A note station that rounds the section station (388+41 vs 388+40.58) is the same structure. Anything farther than ~0.5 ft is the engineer's call: nearest section, cut new, or skip. On 123456 they chose nearest for gaps up to about 3 ft at 382+91 and 383+71, and for 455 B (1 ft). They chose to cut new sections for 4 to 30 ft.
-
-## Undo
-- The log is written with LF line ends. VBA `Line Input` only splits on CR/CRLF, so the first RemovePlacedNotesBatch read each log as one line and removed nothing, then renamed the logs. It now reads the file whole and splits on LF, and only renames the log when every note was removed.
+## steps
+- Give the engineer the exact click path (SKILL.md Step 5) and nothing looser. The module must go into their own project (XSNotes): imported into a shared `status.mvba`, Batch Process ran `[XSNotes]` and quietly did nothing. (2026-11-03)
+- Projects are created in VBA Manager with New; Editor > Save writes into the .mvba, Export only writes .bas files. Never hand the engineer a .mvba. (2026-11-03)
+- Always Debug > Compile after an import, and remove the old module before importing an updated one. (2026-11-03)
+- Batch Process: Initial Model = Default Model Only, every time. (2026-11-03)
+- Big files from Google Drive: ask for "anyone with the link" and download with curl into its own new folder on the external drive; check the size and that it's a zip. (2026-11-03)
