@@ -162,7 +162,12 @@ others: What's Wrong / Fix / Priority), XX placeholders on their own tab, plus Y
 Note Match is one row per structure or driveway, sorted by station, never duplicated: Station | Plan Note |
 Profile Note | Cross Section Note (each note starts with its sheet, e.g. "WK-3LT: …"; a DRY driveway's plan note is
 "N/A (DRY)"; a note that is not there reads MISSING) | Discrepancy (every flag of that structure, e.g. "Pipe size:
-plan XX\" vs profile 18\"", "MISSING on cross section", "MISSING in profile"). Every row on a check tab ends with a Review dropdown that colors the row: Correct (green, fixed on the
+plan XX\" vs profile 18\"", "MISSING on cross section", "MISSING in profile"). Punctuation mismatches (engineer,
+2026-11-09): a row whose notes differ only in spaces, periods, foot marks, dashes, `:` vs `=` or trailing zeros carries
+the same information, so it goes to a "Punctuation Mismatches" section at the bottom of the Note Match tab (same
+columns and dropdown). A row with a real information difference stays in the main list and calls out both, its
+punctuation lines labelled "Punctuation only:", and is not repeated at the bottom. An inch mark is information, not
+punctuation (`47"` vs `47'`, `1 @ 18` vs `1 @ 18"`). The builder does this split itself (`split_punctuation`). Every row on a check tab ends with a Review dropdown that colors the row: Correct (green, fixed on the
 plans), Incorrect (red, still to fix; every row starts here) or N/A (orange, the flag was wrong and there is
 nothing to fix). A hidden Flag ID column ties each row back to its finding. If the
 engineer wants the detailed version (evidence, locate, review notes), also run `build_report.py` with the same

@@ -19,6 +19,7 @@ Every write command takes --dry-run, which prints the requests instead of sendin
   python3 asc.py attach-build <app> --version 1.4.0 [--build-number 12]
   python3 asc.py check <app> --version 1.4.0
   python3 asc.py submit <app> --version 1.4.0 [--products all|id1,id2]
+  python3 asc.py set-sub-price --sub-id <subscription id> --usd 49.99 [--start-date YYYY-MM-DD] [--apply]
 
 <app> = numeric Apple ID, bundle ID, or a unique part of the app name.
 """
@@ -346,28 +347,52 @@ def price_ladders(kind, points_url, territories):
     return lad
 
 
-def tiered_points(points_url, equalize, usd_price, tiers, kind="sub"):
-    """Price point id per territory. Tier 1: Apple's equalized point for the US price. Tier 2/3: that local price
-    times (1 - discount), rounded DOWN to the nearest Apple price in the country's own price list."""
+def tier_targets(local, tiers):
+    """{territory: target local price} for the tier 2/3 territories in `local` (equalized local prices):
+    the equalized price times (1 - discount). Tier 1 territories are not in the result (they keep equalized)."""
+    return {t: local[t] * (1 - tiers[t]) for t in sorted(tiers) if t in local}
+
+
+def step_at_or_under(ladder, target):
+    """Price step of the highest Apple price that is > 0 and <= target (rounded DOWN), or None if every price in
+    the country's ladder {step: price} is above the target."""
+    under = [(price, step) for step, price in ladder.items() if 0 < price <= target + 1e-6]
+    return max(under)[1] if under else None
+
+
+def tiered_plan(points_url, equalize, usd_price, tiers, kind="sub"):
+    """{territory: {"point", "price", "tier", "equalized"}}. Tier 1: Apple's equalized point for the US price.
+    Tier 2/3: that local price times (1 - discount), rounded DOWN to the nearest Apple price in the country's own
+    price list (kept at the equalized point if no lower price exists)."""
     def terr(p):
         return p["relationships"]["territory"]["data"]["id"]
     base = usd_point(get_all(points_url, **{"filter[territory]": "USA"}), usd_price)
-    chosen = {"USA": base["id"]}
-    local = {"USA": float(base["attributes"]["customerPrice"])}
+    usd = float(base["attributes"]["customerPrice"])
+    plan = {"USA": {"point": base["id"], "price": usd, "tier": 1, "equalized": usd}}
     for p in equalize(base["id"]):
-        chosen[terr(p)] = p["id"]
-        local[terr(p)] = float(p["attributes"]["customerPrice"])
-    ts = sorted(t for t in tiers if t in chosen)
-    if not ts:
-        return chosen
+        price = float(p["attributes"]["customerPrice"])
+        plan[terr(p)] = {"point": p["id"], "price": price, "tier": 1, "equalized": price}
+    targets = tier_targets({t: v["equalized"] for t, v in plan.items()}, tiers)
+    if not targets:
+        return plan
     owner = _pid_decode(base["id"])["s"]
-    lad = price_ladders(kind, points_url, ts)
-    for t in ts:
-        target = local[t] * (1 - tiers[t]) + 1e-6
-        under = [(price, step) for step, price in lad.get(t, {}).items() if 0 < price <= target]
-        if under:
-            chosen[t] = _pid_encode({"s": owner, "t": t, "p": max(under)[1]})
-    return chosen
+    lad = price_ladders(kind, points_url, list(targets))
+    for t, target in targets.items():
+        plan[t]["tier"] = 2 if tiers[t] < 0.5 else 3
+        step = step_at_or_under(lad.get(t, {}), target)
+        if step:
+            plan[t]["point"] = _pid_encode({"s": owner, "t": t, "p": step})
+            plan[t]["price"] = lad[t][step]
+    return plan
+
+
+def tiered_points(points_url, equalize, usd_price, tiers, kind="sub"):
+    """Price point id per territory (see tiered_plan)."""
+    return {t: v["point"] for t, v in tiered_plan(points_url, equalize, usd_price, tiers, kind).items()}
+
+
+def sub_equalizer(pid):
+    return get_all(f"/v1/subscriptionPricePoints/{pid}/equalizations", include="territory")
 
 
 def create_subscription(app_id, group_id, s, territories):
@@ -477,6 +502,74 @@ def cmd_products(a):
             create_subscription(aid, grp["id"], s, territories)
     for p in spec.get("in_app_purchases", []):
         create_iap(aid, p, territories)
+
+
+SET_SUB_PRICE_HELP = """Change the price of an EXISTING auto-renewable subscription, in every territory, by the same tier
+rule `products` uses (US base price, tier 1 equalized, tier 2 40% off, tier 3 60% off, each rounded down to an
+Apple price point in that country's currency). Default is a dry run that lists the planned price point per
+territory; nothing is written unless you pass --apply.
+
+Each territory gets one POST /v1/subscriptionPrices with preserveCurrentPrice=false. Apple rule: when a price goes
+UP, existing subscribers must consent (or they lapse at renewal) unless preserveCurrentPrice=true keeps them on the
+old price. Use false only when the subscription has no subscribers yet (never sold, or still in review)."""
+
+
+def cmd_set_sub_price(a):
+    global DRY
+    apply = a.apply and not DRY
+    DRY = not apply   # belt and braces: in a dry run any write is printed, never sent
+    start = None
+    if a.start_date:
+        import datetime
+        try:
+            start = datetime.date.fromisoformat(a.start_date).isoformat()
+        except ValueError:
+            sys.exit(f"--start-date must be YYYY-MM-DD, got {a.start_date!r}")
+    only = set(a.territories.split(",")) if a.territories else None
+    sid = a.sub_id
+    try:
+        sub = get(f"/v1/subscriptions/{sid}")["data"]["attributes"]
+    except RuntimeError as e:
+        if "403" in str(e):
+            sys.exit(f"{e}\nApp Store Connect refused the call (403). If you have not accepted the latest agreement, "
+                     "accept it in App Store Connect > Business, then re-run.")
+        raise
+    print(f"Subscription {sub.get('productId')} ({sid}), state {sub.get('state')}, "
+          f"period {sub.get('subscriptionPeriod')}")
+    tiers = load_tiers(a.pricing)
+    plan = tiered_plan(f"/v1/subscriptions/{sid}/pricePoints", sub_equalizer, a.usd, tiers)
+    if only:
+        unknown = only - set(plan)
+        if unknown:
+            sys.exit(f"Not in the plan: {', '.join(sorted(unknown))}")
+        plan = {t: v for t, v in plan.items() if t in only}
+    print(f"Planned prices (US base ${a.usd}, {'tiered' if tiers else 'equalized'}, "
+          f"start {start or 'immediately'}, preserveCurrentPrice=false):")
+    print(f"  {'terr':<5} {'tier':<4} {'equalized':>12} {'new price':>12}  price point")
+    for t in ["USA"] + sorted(x for x in plan if x != "USA"):
+        if t in plan:
+            v = plan[t]
+            print(f"  {t:<5} {v['tier']:<4} {v['equalized']:>12.2f} {v['price']:>12.2f}  {v['point']}")
+    n = {k: sum(v["tier"] == k for v in plan.values()) for k in (1, 2, 3)}
+    print(f"{len(plan)} territories: {n[1]} tier 1, {n[2]} tier 2, {n[3]} tier 3.")
+    if not apply:
+        print("Re-run with --apply to write these prices.")
+        return
+    attrs = {"preserveCurrentPrice": False}
+    if start:
+        attrs["startDate"] = start
+    failed = []
+    for t, v in plan.items():
+        try:
+            post("subscriptionPrices", attrs, {"subscription": ref("subscriptions", sid),
+                                               "subscriptionPricePoint": ref("subscriptionPricePoints", v["point"])})
+        except RuntimeError as e:
+            failed.append(t)
+            print(f"  {t}: {e}")
+    print(f"Priced {len(plan) - len(failed)} of {len(plan)} territories.")
+    if failed:
+        sys.exit(f"Failed: {','.join(sorted(failed))}. Fix the cause and re-run with --territories "
+                 f"{','.join(sorted(failed))} --apply")
 
 
 # ---------------------------------------------------------------- builds
@@ -633,13 +726,24 @@ def main():
     p = sp.add_parser("check"); p.add_argument("app"); p.add_argument("--version", required=True)
     p = sp.add_parser("submit"); p.add_argument("app"); p.add_argument("--version", required=True)
     p.add_argument("--products", default="all", help="'all' (default), 'none', or comma-separated product IDs")
+    p = sp.add_parser("set-sub-price", help="change an existing subscription's price in every territory",
+                      description=SET_SUB_PRICE_HELP, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--sub-id", required=True, help="App Store Connect subscription id (numeric, not the product ID)")
+    p.add_argument("--usd", required=True, help="new US price, an exact Apple price point, e.g. 49.99")
+    p.add_argument("--start-date", help="YYYY-MM-DD the new price takes effect (default: immediately)")
+    p.add_argument("--pricing", choices=["tiered", "equalized"], default="tiered")
+    p.add_argument("--territories", help="comma-separated ISO alpha-3 codes to limit to (for retries)")
+    g = p.add_mutually_exclusive_group()
+    g.add_argument("--apply", action="store_true", help="send the prices (without it: dry run)")
+    g.add_argument("--dry-run", dest="sub_dry_run", action="store_true", help="list the plan only (the default)")
     a = ap.parse_args()
     DRY = a.dry_run
     if getattr(a, "products", None) == "none":
         a.products = ","
     fn = {"apps": cmd_apps, "status": cmd_status, "new-version": cmd_new_version, "meta-pull": cmd_meta_pull,
           "meta-push": cmd_meta_push, "products": cmd_products, "build": cmd_build, "project": cmd_project, "build-wait": cmd_build_wait,
-          "attach-build": cmd_attach_build, "check": cmd_check, "submit": cmd_submit}[a.cmd]
+          "attach-build": cmd_attach_build, "check": cmd_check, "submit": cmd_submit,
+          "set-sub-price": cmd_set_sub_price}[a.cmd]
     try:
         fn(a)
     except RuntimeError as e:

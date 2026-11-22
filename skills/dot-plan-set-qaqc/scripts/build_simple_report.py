@@ -97,6 +97,65 @@ def disc_lines(disc):
     return [o for o in out if o]
 
 
+# Punctuation mismatches (engineer, 2026-11-09): a note pair that differs only in spaces, periods, foot marks, dashes,
+# ':' vs '=' or trailing zeros carries the same information. Rows like that go to a "Punctuation Mismatches" section at
+# the bottom of the Note Match tab. A row with a real information difference stays in the main list and calls out both
+# (its punctuation lines are labelled), and is not repeated at the bottom. Inch marks are NOT punctuation (47" vs 47').
+PUNCT_LABEL = "Punctuation only: "
+PUNCT_SECTION = ("PUNCTUATION MISMATCHES: spaces, periods, foot marks or dashes only; the information in the notes "
+                 "matches")
+
+
+def punct_norm(text):
+    t = re.sub(r"(\d+\.\d*?)0+(?!\d)", r"\1", str(text or "").upper())   # 4.50 -> 4.5, 262+50.00 -> 262+50.
+    return re.sub(r"[\s.'’`\-:=,;|]", "", t)
+
+
+def punct_only_line(line):
+    """True when a discrepancy line compares profile vs XS text that is the same once punctuation is ignored."""
+    line = re.sub(r"^[•\s]+", "", line or "")
+    if re.match(r"(formatting|punctuation) only", line, re.I):
+        return True
+    parts = [p for p in re.split(r";\s+", line) if p.strip() and not re.match(r"\s*all other lines agree", p, re.I)]
+    if not parts:
+        return False
+    for part in parts:
+        if "`" in part:   # quoted: compare only the quoted text on each side of "vs"; words outside are commentary
+            sides = re.split(r"\s+vs\.?\s+", part, maxsplit=1)
+            if len(sides) != 2:
+                return False
+            # drop "(...)" remarks written outside the quotes, e.g. (no space), (the ... string is not visible)
+            sides = [re.sub(r"\((?:[^()`]|`[^`]*`)*\)", lambda m: m.group(0) if m.start() and x[m.start() - 1] == "`"
+                            else "", x) for x in sides]
+            a, b = ("".join(re.findall(r"`([^`]*)`", x)) for x in sides)
+        else:
+            m = re.match(r"\s*(?:line[\s\d\-]*:\s*)?(?:[\w ]+:\s*(?=profile\b))?(?:profile\s+)?(.+?)\s+vs\.?\s+XS(?:-\d+)?\s+(.+?)\s*$",
+                         part, re.I)
+            if not m:
+                return False
+            a, b = m.groups()
+        if not punct_norm(a) or punct_norm(a) != punct_norm(b):
+            return False
+    return True
+
+
+def split_punctuation(rows):
+    """Note Match rows -> (main rows, punctuation-only rows). Discrepancy is r[4], one issue per line."""
+    main, punct = [], []
+    for r in rows:
+        lines = [l for l in str(r[4] or "").split("\n") if l.strip()]
+        flags = [punct_only_line(l) for l in lines]
+        if lines and all(flags):
+            punct.append(r)
+        elif any(flags):
+            out = [re.sub(r"^(•\s*)?", lambda m: (m.group(1) or "") + PUNCT_LABEL, l) if f and PUNCT_LABEL not in l
+                   else l for l, f in zip(lines, flags)]
+            main.append(r[:4] + ["\n".join(out)] + r[5:])
+        else:
+            main.append(r)
+    return main, punct
+
+
 def notematch_rows(flags, sid_by_page):
     """Note Match tab: one row per structure or driveway (all of its flags in one Discrepancy cell), by station."""
     groups = {}
@@ -140,13 +199,17 @@ def short(text, n=220):
 REVIEW = {"Correct": "00B050", "Incorrect": "E06666", "Unsure": "FFD966", "N/A": "F6B26B"}
 
 
-def table(wb, title, headers, rows, widths, review=False):
+def table(wb, title, headers, rows, widths, review=False, section=None):
     """review=True: each row ends with its flag id; adds a Review dropdown (row color follows it) and a hidden
     Flag ID column so a returned workbook can be read back."""
     if review:
         headers = headers + ["Review", "Flag ID"]
         widths = widths + [12, 10]
         rows = [r[:-1] + [r[-1].get("review", "Incorrect"), r[-1]["id"]] for r in rows]
+        if section and section[1]:   # (label, rows): a titled block under the main list, same columns and dropdown
+            sec = [r[:-1] + [r[-1].get("review", "Incorrect"), r[-1]["id"]] for r in section[1]]
+            rows = rows + [[None] * len(headers), [section[0]] + [None] * (len(headers) - 1)] + sec
+            section_row = len(rows) - len(sec) + 1   # worksheet row of the section label
     ws = wb.create_sheet(title)
     ws.append(headers)
     for c in ws[1]:
@@ -162,6 +225,10 @@ def table(wb, title, headers, rows, widths, review=False):
             c.border = Border(bottom=THIN)
             if isinstance(c.value, str) and c.value in FILL and headers[c.column - 1] in ("Priority", "Status"):
                 c.fill = PatternFill("solid", fgColor=FILL[c.value])
+    if review and section and section[1]:
+        lab = ws.cell(section_row, 1)
+        lab.font, lab.fill = Font(bold=True, color="FFFFFF"), HEAD
+        ws.merge_cells(start_row=section_row, start_column=1, end_row=section_row, end_column=len(headers) - 2)
     ws.freeze_panes = "A2"
     ws.auto_filter.ref = ws.dimensions
     if review and rows:
@@ -236,8 +303,9 @@ def main():
             table(wb, name, ["Sheet ID", "PDF Page", "Text Found", "Correct To", "Status", "Notes"], rows,
                   [12, 9, 34, 34, 12, 60], review=True)
         elif t == "notematch":
+            main_rows, punct_rows = split_punctuation(notematch_rows(ft, sid_by_page))
             table(wb, name, ["Station", "Plan Note", "Profile Note", "Cross Section Note", "Discrepancy"],
-                  notematch_rows(ft, sid_by_page), [20, 38, 55, 55, 48], review=True)
+                  main_rows, [20, 38, 55, 55, 48], review=True, section=(PUNCT_SECTION, punct_rows))
         else:
             rows.sort(key=lambda r: (order.get(r[4], 3), r[1] if isinstance(r[1], int) else 9999))
             table(wb, name, ["Sheet ID", "PDF Page", "What's Wrong", "Fix", "Priority", "Status"], rows,

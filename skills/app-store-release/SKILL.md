@@ -61,6 +61,10 @@ is safe. Periods: ONE_WEEK, ONE_MONTH, TWO_MONTHS, THREE_MONTHS, SIX_MONTHS, ONE
 Apple price point (the script lists the nearest ones if not). Make sure the app code uses the same product IDs
 (RevenueCat or Adapty offerings included) before the build.
 
+Change an existing subscription's price (same tier rule, every territory): `python3 $A set-sub-price --sub-id <id>
+--usd 49.99 [--start-date YYYY-MM-DD]` prints the plan per territory; add `--apply` to send (preserveCurrentPrice
+false, so only before it has subscribers). Offline tests: `cd scripts && python3 -m unittest test_set_sub_price`.
+
 ## 5. Build and upload with EAS
 
 1. Set `expo.version` in the project's `app.json` (or app.config) to the new version. Build numbers come from EAS

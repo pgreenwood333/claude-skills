@@ -1,0 +1,12 @@
+{
+  "_note": "Offline fixture for test_set_sub_price.py. Made-up subscription id; prices shaped like Apple's subscriptionPricePoints. Steps are Apple's per-country price steps.",
+  "sub_id": "1000000001",
+  "usa_points": {"10100": 39.99, "10110": 49.99, "10120": 59.99},
+  "equalizations_for_49_99": {"GBR": 49.99, "DEU": 49.99, "BRA": 279.9, "EGY": 1499.99, "ALB": 5900.0},
+  "equalized_steps": {"GBR": "10110", "DEU": "10110", "BRA": "10090", "EGY": "10095", "ALB": "10099"},
+  "ladders": {
+    "BRA": {"10000": 0.0, "10050": 159.9, "10051": 164.9, "10052": 169.9, "10053": 174.9, "10090": 279.9},
+    "EGY": {"10060": 599.99, "10061": 600.0, "10062": 649.99, "10095": 1499.99},
+    "ALB": {"10070": 3600.0, "10071": 3700.0, "10099": 5900.0}
+  }
+}
