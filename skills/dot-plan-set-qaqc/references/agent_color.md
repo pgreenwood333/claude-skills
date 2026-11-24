@@ -8,8 +8,10 @@ The rule (DOT plan-profile sheets as printed):
   lines and their labels. A plan-view label is purple when it labels something existing.
 - **Black**: everything else, including proposed actions that refer to something existing: "TIE TO EXIST. ROW",
   "REMOVE EXIST. PIPE" are proposed work and print black (blue if the work itself is drainage, e.g.
-  "CONNECT TO EXIST. INLET"). Ditch grades and their station/elevation callouts in the profile
-  ("-4.79% LT DITCH GRADE", "RT 112+75.00 EL 283.00") print black. Driveway notes in the profile ("STA. 148+78.00 RT." / "16' DRIVE REQ'D." /
+  "CONNECT TO EXIST. INLET"). Ditches in the profile: the ditch LINES themselves print black, but the ditch
+  grade labels and their station/elevation callouts ("-4.79% LT DITCH GRADE", "RT 112+75.00 EL 283.00") may print
+  blue or black; either is correct, so never flag a blue or black ditch grade label or callout (only purple or an
+  odd color). A ditch line drawn blue or purple is a finding. Driveway notes in the profile ("STA. 148+78.00 RT." / "16' DRIVE REQ'D." /
   "40'-18\" ALT. PIPE REQ'D.") print entirely black, pipe line included, even though the pipe is proposed
   drainage; the matching driveway pipe label in the plan view ("40' - XX\" ALT REQ'D.") prints blue. Never ask
   for part of a driveway note to be blue. Roadway grades, VPI/VPC data, earthwork, erosion control (silt basins), ROW and
@@ -32,15 +34,16 @@ engineer's past corrections and they override the defaults above.
 3. Visual pass, one sheet at a time, on `<work>/color/overlays/*.png` (each note boxed in the color it measured as)
    and on 250 dpi renders of the profile (`build_index.py render ... --clip <profile box> --dpi 250`). Look for
    what the text rules cannot see:
-   - **Linework**: pipes drawn in the profile: existing pipes purple, proposed pipes blue. A proposed pipe drawn
+   - **Linework**: ditch lines in the profile print black (a blue or purple ditch line is a finding, even though
+     its grade label may be blue). Pipes drawn in the profile: existing pipes purple, proposed pipes blue. A proposed pipe drawn
      purple or black, or an existing pipe drawn blue, is a finding.
    - A note whose wording says one thing and whose color says another, which the keyword rules missed.
    - Labels with no text copy (they do not appear in `notes`).
 4. Write `<work>/findings/color.json` (format: `references/findings_schema.md`), ids COL-001 onward, task `color`:
-   - finding: what is the wrong color and what it should be ("RT DITCH GRADE -6.10% prints blue; ditch grades print
-     black in the profile (LT DITCH GRADE beside it is black)").
+   - finding: what is the wrong color and what it should be ("existing 18\" RCP label `EXIST. 18\" RCP` prints
+     black; existing items print purple").
    - evidence: the text exactly as printed in backticks plus the measured color, e.g.
-     `` `-6.10%` / `RT DITCH GRADE` measured #1337ff ``.
+     `` `EXIST. 18" RCP` measured #000000 ``.
      Copy the hex from `line_colors`; never describe a color you did not measure or see.
    - severity: medium for a wrong-color drainage or existing item (a contractor could read existing as proposed);
      low for a cosmetic case (one line of a note on the wrong level when the item is clear).

@@ -19,6 +19,7 @@ Agents and the grader read their section before a run; the `all` section applies
 
 ## color
 - Driveway notes in the profile print entirely black, pipe line included; the matching plan-view driveway pipe label prints blue. Never flag a black driveway note. (2026-10-29)
+- Ditch grade labels and their station/elevation callouts in the profile may print blue or black; both are correct, never flag them. The ditch lines themselves print black: flag a ditch line drawn blue or purple. (2026-11-24)
 
 ## quantity
 - Take every quantity locate rect from the build_index words boxes and confirm the highlighted row on a render; never estimate a row's y from the table's row pitch or from rendered pixels. (2026-11-22)

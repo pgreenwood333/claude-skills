@@ -15,8 +15,10 @@ Rules applied (these produce CANDIDATES for the agent to judge, not findings)
                      EXIST. PIPE) or REQ'D / PROP. / TEMPORARY EASEMENT. Should be black, or blue if drainage work
   DRAIN_BLACK        note names a drainage item (pipe, inlet, ditch...) but prints black: blue if proposed,
                      purple if it is existing survey data (e.g. INLET TOP EL= beside a surveyed MH)
-  DITCH_NOT_BLACK    ditch grade label not black (ditch grades print black in the profile)
-  BLUE_NO_DRAIN      blue note with no drainage words (includes blue ditch station/elevation callouts)
+  DITCH_LABEL_COLOR  ditch grade label or its station/elevation callout prints purple or an odd color. Ditch grade
+                     labels may print blue or black (engineer, 2026-11-24); only the ditch LINES must be black, and
+                     linework is judged by the agent on renders
+  BLUE_NO_DRAIN      blue note with no drainage words (blue ditch grade labels and ditch callouts are exempt)
   Purple labels with no proposed wording (PBOX, POLE, MH, BENCH, gas line) are survey items and are not flagged.
   DRIVE_NOT_BLACK    a driveway note (has a DRIVE line) is not all black; driveway notes print black, pipe line
                      included (the plan view's driveway pipe label prints blue)
@@ -44,7 +46,8 @@ NOT_DRAIN = re.compile(r"\b(GAS|WATER|FIBER|STEEL|TELEPHONE|ELECTRIC|POWER|SILT|
 STRUCT = re.compile(r"^\[\s*\d+\s*[A-Z]?\s*\]?$|^\d+(\.\d+)?' / \d+(\.\d+)?' / \d+'\s*\d*\"?$|^\d+' - \d+\"$")
 # a blue note is only judged when it has real words (bare stations/elevations are pieces of a drainage note)
 WORDY = re.compile(r"\b(?!STA\b|EL\b|LT\b|RT\b|INV\b|TOP\b)[A-Z]{3,}\b")
-# ditch grades print BLACK in the profile (engineer's rule), and so do their station/elevation callouts
+# ditch grade labels and their station/elevation callouts may print blue or black (engineer, 2026-11-24);
+# the ditch lines themselves print black (linework: judged by the agent on renders)
 DRIVE = re.compile(r"\bDRIVE REQ", re.I)   # a driveway note, not a street name ("TRUMAN DRIVE")
 DITCH = re.compile(r"\bDITCH GRADE\b|\b(LT|RT) DITCH\b", re.I)
 CALLOUT = re.compile(r"^((LT|RT)\s*\d+\+\d+(\.\d+)?|EL\.?\s*\d+(\.\d+)?|[+-]?\d+(\.\d+)?%|NOTE:?|\s|/)+$", re.I)
@@ -144,7 +147,8 @@ def judge(note):
         if any(c not in ("black", "gray") for c in cols):
             rules.append("DRIVE_NOT_BLACK")
         return text, main, rules, has_ex, has_dr
-    if len(set(c for c in cols if c != "gray")) > 1:
+    ditch = bool(DITCH.search(text))
+    if len(set(c for c in cols if c != "gray")) > 1 and not (ditch and set(cols) <= {"black", "blue", "gray"}):
         rules.append("MIXED")
     if any(c == "other" for c in cols):
         rules.append("ODD_COLOR")
@@ -154,8 +158,11 @@ def judge(note):
         rules.append("PROPOSED_PURPLE")
     if has_dr and not existing_item and main == "black":
         rules.append("DRAIN_BLACK")
-    if DITCH.search(text) and main not in ("black", None):
-        rules.append("DITCH_NOT_BLACK")
+    if ditch:
+        if main not in ("black", "blue", None):
+            rules.append("DITCH_LABEL_COLOR")
+    elif main == "blue" and CALLOUT.match(text.strip()):
+        pass   # a bare station/elevation/percent callout (ditch callouts may be blue)
     elif main == "blue" and not dr_words and WORDY.search(text):
         rules.append("BLUE_NO_DRAIN")
     return text, main, rules, has_ex, has_dr
